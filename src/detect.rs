@@ -45,7 +45,13 @@ impl Detector {
             (
                 "R-URGENCY",
                 0.35,
-                r"(?i)do not (?:tell|mention).{0,30}(?:user|this)|as the ai assistant you must|secretly",
+                r"(?i)do not (?:tell|mention) (?:anyone|this)|as the ai assistant you must|secretly",
+            ),
+            // Asking the agent to hide something from the person it works for.
+            (
+                "R-SECRECY",
+                0.6,
+                r"(?i)\b(?:do not|don['’]?t|never)\s+(?:tell|mention|inform|show|reveal)\b.{0,40}\b(?:the user|the human|your user|the owner)\b|\bwithout (?:telling|informing|notifying|asking) (?:the user|the human|your user)\b|\bkeep (?:this|it) (?:secret|hidden|private) from\b|\b(?:hide|conceal) (?:this|it) from (?:the user|the human|your user)\b",
             ),
             (
                 "R-MEMORY",

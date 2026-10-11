@@ -4,6 +4,15 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Fixed
+
+- Asking the agent to hide something from the user ("do not tell the user", "without telling the
+  user", "keep this secret from") is a new strong signal (`R-SECRECY`) and withholds the field on
+  its own. Fake authority alone ("as the AI assistant you must") stays a weak signal.
+- In outside content, smuggling characters (Unicode tags, variation-selector runs, bidi controls
+  such as Trojan Source overrides) now withhold the field instead of only being stripped. Ordinary
+  hidden markup (HTML comments, zero-width characters, colors) is still stripped silently.
+
 ## [0.3.2] - 2026-10-11
 
 ### Changed

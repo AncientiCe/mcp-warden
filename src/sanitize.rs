@@ -230,9 +230,21 @@ impl Sanitizer {
                         .join("\n")
                 );
                 let quarantine = self.policy.quarantine.as_deref();
-                // In quarantine mode hidden text is already stripped, so only
-                // instruction-like content justifies withholding a field.
-                let verdict = detector.evaluate(&evidence, hidden && quarantine.is_none());
+                // In quarantine mode ordinary hidden markup (comments, zero-width
+                // characters, colors) is stripped without suspicion; smuggling
+                // characters only an attacker uses still count as evidence.
+                let smuggled = findings[first_finding..].iter().any(|f| {
+                    matches!(
+                        f.kind,
+                        FindingKind::TagChars | FindingKind::VariationSelectors | FindingKind::Bidi
+                    )
+                });
+                let evidence_of_hiding = if quarantine.is_some() {
+                    smuggled
+                } else {
+                    hidden
+                };
+                let verdict = detector.evaluate(&evidence, evidence_of_hiding);
                 let released = quarantine.is_some()
                     && self
                         .policy
