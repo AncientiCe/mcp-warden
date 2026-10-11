@@ -548,10 +548,17 @@ fn hook_corpus(name: &str) -> Vec<Value> {
     serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
 }
 
-fn issue_view(text: &str) -> Value {
+/// A corpus case as `gh issue view --json title,body,comments` prints it.
+/// The title defaults to a neutral one; `comments` is a list of comment bodies.
+fn issue_view(case: &Value) -> Value {
+    let comments: Vec<Value> = case["comments"]
+        .as_array()
+        .map(|bodies| bodies.iter().map(|body| json!({"body": body})).collect())
+        .unwrap_or_default();
+    let title = case["title"].as_str().unwrap_or("Bug report");
     bash(
-        "gh issue view 7 --json title,body",
-        &json!({"title": "Bug report", "body": text}).to_string(),
+        "gh issue view 7 --json title,body,comments",
+        &json!({"title": title, "body": case["text"], "comments": comments}).to_string(),
     )
 }
 
@@ -567,14 +574,14 @@ fn was_withheld(output: &std::process::Output) -> bool {
 
 #[test]
 fn every_live_red_team_attack_is_withheld() {
-    // Issue bodies from the private red-team repo that earlier releases let through.
+    // Issues from the private red-team repo: titles, bodies and comments.
     let home = Home::new();
     // Cases marked `accepted_miss` say why a pattern scanner can't tell them
     // from ordinary content; they stay in the corpus as a record.
     let missed: Vec<String> = hook_corpus("hook_malicious")
         .iter()
         .filter(|case| case["accepted_miss"].is_null())
-        .filter(|case| !was_withheld(&home.hook(&issue_view(case["text"].as_str().unwrap()))))
+        .filter(|case| !was_withheld(&home.hook(&issue_view(case))))
         .map(|case| format!("{} ({})", case["id"], case["technique"]))
         .collect();
     assert!(missed.is_empty(), "{} missed: {missed:#?}", missed.len());
@@ -585,7 +592,7 @@ fn benign_look_alikes_of_those_attacks_are_not_withheld() {
     let home = Home::new();
     let flagged: Vec<String> = hook_corpus("hook_benign")
         .iter()
-        .filter(|case| was_withheld(&home.hook(&issue_view(case["text"].as_str().unwrap()))))
+        .filter(|case| was_withheld(&home.hook(&issue_view(case))))
         .map(|case| case["id"].to_string())
         .collect();
     assert!(flagged.is_empty(), "{flagged:#?}");

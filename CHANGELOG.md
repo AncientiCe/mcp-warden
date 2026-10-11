@@ -4,6 +4,12 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Added
+
+- The hook regression corpus now holds every live red-team issue that is caught (275, plus two
+  accepted misses), with titles and comments as `gh issue view` returns them. Payloads that only
+  appear in a title or a later comment are covered too.
+
 ## [0.3.5] - 2026-10-11
 
 ### Fixed
