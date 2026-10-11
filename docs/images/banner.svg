@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" role="img" aria-labelledby="title desc">
+  <title id="title">mcp-warden</title>
+  <desc id="desc">mcp-warden banner: a shield standing between untrusted tool output and an AI agent, with the tagline "Clean untrusted tool output before your agent reads it".</desc>
+  <style>
+    .bg { fill: #f6f8fa; }
+    .ink { fill: #1f2328; }
+    .muted { fill: #57606a; }
+    .line { stroke: #8c959f; }
+    .chip { fill: #ffffff; stroke: #d0d7de; }
+    .bad { fill: #cf222e; }
+    .good { fill: #1a7f37; }
+    .shield { fill: #0969da; }
+    .shield-inner { fill: #ffffff; }
+    .check { stroke: #1a7f37; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #0d1117; }
+      .ink { fill: #e6edf3; }
+      .muted { fill: #9198a1; }
+      .line { stroke: #6e7681; }
+      .chip { fill: #161b22; stroke: #30363d; }
+      .bad { fill: #f85149; }
+      .good { fill: #3fb950; }
+      .shield { fill: #2f81f7; }
+      .shield-inner { fill: #0d1117; }
+      .check { stroke: #3fb950; }
+    }
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+    .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
+  </style>
+
+  <rect class="bg" width="1280" height="320" rx="16"/>
+
+  <!-- Left: untrusted sources -->
+  <g transform="translate(64 78)">
+    <rect class="chip" width="236" height="44" rx="10" stroke-width="1.5"/>
+    <circle class="bad" cx="24" cy="22" r="6"/>
+    <text class="ink mono" x="42" y="28" font-size="17">GitHub issue</text>
+  </g>
+  <g transform="translate(64 138)">
+    <rect class="chip" width="236" height="44" rx="10" stroke-width="1.5"/>
+    <circle class="bad" cx="24" cy="22" r="6"/>
+    <text class="ink mono" x="42" y="28" font-size="17">WebFetch / curl</text>
+  </g>
+  <g transform="translate(64 198)">
+    <rect class="chip" width="236" height="44" rx="10" stroke-width="1.5"/>
+    <circle class="bad" cx="24" cy="22" r="6"/>
+    <text class="ink mono" x="42" y="28" font-size="17">any MCP server</text>
+  </g>
+  <text class="muted" x="64" y="62" font-size="15">untrusted output</text>
+
+  <!-- Arrows in -->
+  <g class="line" stroke-width="2" fill="none" stroke-linecap="round">
+    <path d="M308 100 C 360 100, 380 160, 420 160"/>
+    <path d="M308 160 L 420 160"/>
+    <path d="M308 220 C 360 220, 380 160, 420 160"/>
+  </g>
+
+  <!-- Shield -->
+  <g transform="translate(428 88)">
+    <path class="shield" d="M72 0 L144 26 V78 C144 120 112 140 72 152 C32 140 0 120 0 78 V26 Z"/>
+    <path class="shield-inner" d="M72 16 L128 36 V78 C128 110 104 126 72 136 C40 126 16 110 16 78 V36 Z"/>
+    <path class="check" d="M44 76 L64 96 L102 56" fill="none" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Arrow out -->
+  <path class="line" d="M584 160 L 640 160" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <path class="line" d="M632 153 L 641 160 L 632 167" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Agent chip -->
+  <g transform="translate(650 138)">
+    <rect class="chip" width="120" height="44" rx="10" stroke-width="1.5"/>
+    <circle class="good" cx="24" cy="22" r="6"/>
+    <text class="ink mono" x="42" y="28" font-size="17">agent</text>
+  </g>
+  <text class="muted" x="650" y="122" font-size="15">sees clean data</text>
+
+  <!-- Title -->
+  <text class="ink" x="830" y="148" font-size="56" font-weight="700">mcp-warden</text>
+  <text class="muted" x="832" y="188" font-size="20">Clean untrusted tool output</text>
+  <text class="muted" x="832" y="216" font-size="20">before your agent reads it.</text>
+</svg>
