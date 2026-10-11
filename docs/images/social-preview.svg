@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" role="img" aria-labelledby="title desc">
+  <title id="title">mcp-warden social preview</title>
+  <desc id="desc">mcp-warden: clean untrusted tool output before your AI agent reads it. Works with Claude Code, Codex and Cursor.</desc>
+  <defs>
+    <radialGradient id="glow" cx="0.28" cy="0.45" r="0.6">
+      <stop offset="0" stop-color="#1f6feb" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#0d1117" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <style>
+    text { font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif; }
+    .mono { font-family: Consolas, ui-monospace, SFMono-Regular, Menlo, monospace; }
+  </style>
+
+  <rect width="1280" height="640" fill="#0d1117"/>
+  <rect width="1280" height="640" fill="url(#glow)"/>
+
+  <!-- Shield -->
+  <g transform="translate(150 150) scale(1.9)">
+    <path d="M72 0 L144 26 V78 C144 120 112 140 72 152 C32 140 0 120 0 78 V26 Z" fill="#2f81f7"/>
+    <path d="M72 16 L128 36 V78 C128 110 104 126 72 136 C40 126 16 110 16 78 V36 Z" fill="#0d1117"/>
+    <path d="M44 76 L64 96 L102 56" fill="none" stroke="#3fb950" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Title and tagline -->
+  <text x="520" y="250" font-size="92" font-weight="700" fill="#e6edf3">mcp-warden</text>
+  <text x="524" y="312" font-size="34" fill="#9198a1">Clean untrusted tool output</text>
+  <text x="524" y="356" font-size="34" fill="#9198a1">before your AI agent reads it.</text>
+
+  <!-- Feature chips -->
+  <g font-size="22" class="mono">
+    <g transform="translate(524 400)">
+      <rect width="190" height="44" rx="22" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+      <text x="95" y="29" text-anchor="middle" fill="#e6edf3" class="mono">hidden text</text>
+    </g>
+    <g transform="translate(728 400)">
+      <rect width="190" height="44" rx="22" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+      <text x="95" y="29" text-anchor="middle" fill="#e6edf3" class="mono">quarantine</text>
+    </g>
+    <g transform="translate(932 400)">
+      <rect width="190" height="44" rx="22" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+      <text x="95" y="29" text-anchor="middle" fill="#e6edf3" class="mono">MCP proxy</text>
+    </g>
+  </g>
+
+  <!-- Footer -->
+  <line x1="80" y1="540" x2="1200" y2="540" stroke="#30363d" stroke-width="1.5"/>
+  <text x="80" y="584" font-size="24" fill="#9198a1">Claude Code · Codex · Cursor · any MCP client</text>
+  <text x="1200" y="584" font-size="24" fill="#9198a1" text-anchor="end" class="mono">github.com/AncientiCe/mcp-warden</text>
+</svg>
