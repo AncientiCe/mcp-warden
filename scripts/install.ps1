@@ -90,7 +90,7 @@ try {
     }
 
     Write-Host "mcp-warden installed to $InstallDir\mcp-warden.exe"
-    Write-Host "Next: mcp-warden install claude-code   # scan every tool result, gate risky actions"
+    Write-Host "Next: mcp-warden install   # protect Claude Code, Codex and Cursor"
     Write-Host "Or wrap one MCP server: mcp-warden --server-id github -- github-mcp-server stdio"
 } finally {
     Remove-Item -Recurse -Force $TempDir -ErrorAction SilentlyContinue

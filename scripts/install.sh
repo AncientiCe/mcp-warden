@@ -85,5 +85,5 @@ case ":$PATH:" in
 esac
 
 echo "mcp-warden installed to $install_dir/mcp-warden"
-echo "Next: mcp-warden install claude-code   # scan every tool result, gate risky actions"
+echo "Next: mcp-warden install   # protect Claude Code, Codex and Cursor"
 echo "Or wrap one MCP server: mcp-warden --server-id github -- github-mcp-server stdio"

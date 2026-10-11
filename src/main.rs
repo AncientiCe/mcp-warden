@@ -104,12 +104,15 @@ impl FilterArgs {
 
 #[derive(Args)]
 struct ClientArgs {
-    /// Agent client to configure.
+    /// Agent client to configure [default: every supported client found].
     #[arg(value_enum)]
-    client: Client,
+    client: Option<Client>,
     /// Hook settings file [default: ~/.claude/settings.json, ~/.codex/hooks.json or ~/.cursor/hooks.json].
-    #[arg(long)]
+    #[arg(long, requires = "client")]
     settings: Option<PathBuf>,
+    /// Home directory to look for clients in [default: your home directory].
+    #[arg(long, conflicts_with = "settings")]
+    home: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -287,13 +290,23 @@ fn state_command(args: StateArgs, approval: Option<String>, clear: bool) -> Resu
 }
 
 fn install(target: ClientArgs, install: bool) -> Result<ExitCode> {
-    let settings = match target.settings {
-        Some(path) => path,
-        None => mcp_warden::install::default_settings(target.client)?,
-    };
     let executable = std::env::current_exe().context("locating the mcp-warden executable")?;
-    let report =
-        mcp_warden::install::hook_settings(&settings, &executable, target.client, install)?;
+    let home = || match &target.home {
+        Some(home) => Ok(home.clone()),
+        None => mcp_warden::install::home(),
+    };
+    let report = match (target.client, &target.settings) {
+        (Some(client), Some(settings)) => {
+            mcp_warden::install::hook_settings(settings, &executable, client, install)?
+        }
+        (Some(client), None) => mcp_warden::install::hook_settings(
+            &mcp_warden::install::settings_in(&home()?, client),
+            &executable,
+            client,
+            install,
+        )?,
+        (None, _) => mcp_warden::install::all_clients(&home()?, &executable, install)?,
+    };
     writeln!(std::io::stdout(), "{report}")?;
     Ok(ExitCode::SUCCESS)
 }

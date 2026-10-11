@@ -12,14 +12,46 @@ use crate::wrap_config::write_with_backup;
 
 const TIMEOUT_SECONDS: u64 = 30;
 
-/// The user-wide hook settings of `client`.
-pub fn default_settings(client: Client) -> Result<PathBuf> {
-    let home = dirs::home_dir().context("no home directory; supply --settings")?;
-    Ok(match client {
-        Client::ClaudeCode => home.join(".claude").join("settings.json"),
-        Client::Codex => home.join(".codex").join("hooks.json"),
-        Client::Cursor => home.join(".cursor").join("hooks.json"),
+pub fn home() -> Result<PathBuf> {
+    dirs::home_dir().context("no home directory; supply --home or --settings")
+}
+
+/// The directory a client keeps its user settings in, under `home`.
+fn client_dir(home: &Path, client: Client) -> PathBuf {
+    home.join(match client {
+        Client::ClaudeCode => ".claude",
+        Client::Codex => ".codex",
+        Client::Cursor => ".cursor",
     })
+}
+
+/// The user-wide hook settings of `client` under `home`.
+pub fn settings_in(home: &Path, client: Client) -> PathBuf {
+    let file = match client {
+        Client::ClaudeCode => "settings.json",
+        Client::Codex | Client::Cursor => "hooks.json",
+    };
+    client_dir(home, client).join(file)
+}
+
+/// Installs (or removes) the hook for every supported client found under `home`.
+pub fn all_clients(home: &Path, executable: &Path, install: bool) -> Result<Value> {
+    let mut reports = Vec::new();
+    for client in Client::ALL {
+        if !client_dir(home, client).is_dir() {
+            continue;
+        }
+        let mut report = hook_settings(&settings_in(home, client), executable, client, install)?;
+        report["client"] = json!(client.name());
+        reports.push(report);
+    }
+    if reports.is_empty() {
+        bail!(
+            "no supported agent client found in {} (looked for .claude, .codex and .cursor)",
+            home.display()
+        );
+    }
+    Ok(json!({ "clients": reports }))
 }
 
 /// Adds (or with `install == false` removes) warden's hooks, keeping everything

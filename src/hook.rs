@@ -68,7 +68,9 @@ pub enum Client {
 }
 
 impl Client {
-    fn name(self) -> &'static str {
+    pub const ALL: [Client; 3] = [Client::ClaudeCode, Client::Codex, Client::Cursor];
+
+    pub fn name(self) -> &'static str {
         match self {
             Client::ClaudeCode => "claude-code",
             Client::Codex => "codex",

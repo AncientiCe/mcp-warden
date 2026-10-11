@@ -179,3 +179,52 @@ fn invalid_settings_are_left_untouched() {
     );
     assert!(backups(dir.path()).is_empty());
 }
+
+fn run_all(verb: &str, home: &Path) -> std::process::Output {
+    Command::new(warden_exe())
+        .args([verb, "--home"])
+        .arg(home)
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn install_without_a_client_sets_up_every_client_found() {
+    let home = TempDir::new().unwrap();
+    std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+    std::fs::create_dir_all(home.path().join(".cursor")).unwrap();
+    let output = run_all("install", home.path());
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let claude = read(&home.path().join(".claude").join("settings.json"));
+    assert_eq!(warden_commands(&claude, "PostToolUse").len(), 1);
+    let cursor = read(&home.path().join(".cursor").join("hooks.json"));
+    assert_eq!(cursor["hooks"]["postToolUse"].as_array().unwrap().len(), 1);
+    assert!(!home.path().join(".codex").exists());
+
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let clients: Vec<&str> = report["clients"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["client"].as_str().unwrap())
+        .collect();
+    assert_eq!(clients, ["claude-code", "cursor"]);
+
+    let output = run_all("uninstall", home.path());
+    assert!(output.status.success());
+    let claude = read(&home.path().join(".claude").join("settings.json"));
+    assert!(warden_commands(&claude, "PostToolUse").is_empty());
+}
+
+#[test]
+fn install_without_any_client_present_is_an_error() {
+    let home = TempDir::new().unwrap();
+    let output = run_all("install", home.path());
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("no supported agent"));
+}

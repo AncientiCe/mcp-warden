@@ -29,6 +29,8 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
   (`hook --client cursor`). Flagged MCP output is replaced; Cursor cannot replace Shell or Read
   output, so the agent is told to treat a flagged result as data and tell the user. Cursor does
   not name the server behind an MCP tool, so every MCP result is checked as outside content.
+- `mcp-warden install` and `mcp-warden uninstall` without a client handle every supported client
+  found in the home directory (`--home` to look elsewhere).
 
 ### Removed
 

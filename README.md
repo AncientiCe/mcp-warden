@@ -54,16 +54,22 @@ The binary is `target/release/mcp-warden` (`target\release\mcp-warden.exe` on Wi
 This crate is not published on crates.io. Use `cargo install --path . --locked` from a checkout, or
 `cargo install --git https://github.com/AncientiCe/mcp-warden --locked` for the published Git revision.
 
-## Protect every tool in Claude Code
+## Protect every tool in Claude Code, Codex and Cursor
 
 ```bash
-mcp-warden install claude-code
+mcp-warden install
 ```
 
-This registers `mcp-warden hook` once in `~/.claude/settings.json` for every tool, after writing an
-exact backup. Nothing has to be configured per MCP server. Restart Claude Code to load the hooks.
-`mcp-warden uninstall claude-code` removes only warden's entries; `--settings PATH` targets a
-project's `.claude/settings.json` instead.
+This registers `mcp-warden hook` once for every tool in each supported client it finds:
+`~/.claude/settings.json`, `~/.codex/hooks.json` and `~/.cursor/hooks.json`, after writing an exact
+backup of any existing file. Nothing has to be configured per MCP server. Restart the clients to
+load the hook; Codex asks once, via `/hooks`, to trust it. `mcp-warden install claude-code` (or
+`codex`, `cursor`) targets one client, `--settings PATH` a project's file instead, and
+`mcp-warden uninstall` removes only warden's entries.
+
+Codex cannot swap in cleaned output, so a flagged result is replaced by the quarantine notice as a
+whole. Cursor can replace MCP output only; for Shell and Read results the agent is told to treat
+the flagged output as data and tell you.
 
 After each tool call, the hook checks the result, whatever produced it: `gh issue view` or `curl`
 in Bash, WebFetch, WebSearch, or any MCP tool. Nothing else changes: there is no session taint and
