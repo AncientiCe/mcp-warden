@@ -4,6 +4,8 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-10-11
+
 ### Fixed
 
 - Detection now catches overrides written with Cyrillic or Greek look-alike letters, ROT13-encoded
