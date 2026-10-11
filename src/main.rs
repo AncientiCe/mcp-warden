@@ -35,6 +35,12 @@ struct Cli {
 
 #[derive(Args)]
 struct WrapArgs {
+    /// Add provenance boundaries around untrusted result text.
+    #[arg(long)]
+    label: bool,
+    /// TOML trust map, applied when labeling is enabled.
+    #[arg(long, requires = "label")]
+    config: Option<PathBuf>,
     /// Name of the wrapped server, used in logs and the audit log.
     #[arg(long, default_value = "server")]
     server_id: String,
@@ -127,12 +133,12 @@ fn wrap(args: WrapArgs) -> Result<ExitCode> {
             }
         }
     };
-    let session = Arc::new(Session::new(
-        args.server_id,
-        args.filter.trust,
-        args.filter.sanitizer()?,
-        audit,
-    ));
+    let map = mcp_warden::config::TrustMap::load(args.config.as_deref(), &args.server_id)?;
+    let trust = map.default_trust.unwrap_or(args.filter.trust);
+    let session = Arc::new(
+        Session::new(args.server_id, trust, args.filter.sanitizer()?, audit)
+            .with_labeler(args.label.then_some(mcp_warden::label::Labeler { map })),
+    );
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;

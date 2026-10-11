@@ -16,7 +16,7 @@ const PAYLOAD_LIMIT: usize = 1000;
 /// Shortest run of base64/hex-looking characters treated as an opaque blob.
 const BLOB_MIN_LEN: usize = 200;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, clap::ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum Trust {
     /// Output is the user's own data: only invisible characters are stripped.
@@ -28,6 +28,8 @@ pub enum Trust {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FindingKind {
+    /// An external text field was wrapped in a provenance boundary.
+    Provenance,
     /// Unicode tag characters (U+E0000–U+E007F), "ASCII smuggling".
     TagChars,
     /// Runs of variation selectors encoding bytes.
@@ -51,6 +53,7 @@ pub enum FindingKind {
 impl FindingKind {
     pub fn name(self) -> &'static str {
         match self {
+            Self::Provenance => "provenance",
             Self::TagChars => "tag_chars",
             Self::VariationSelectors => "variation_selectors",
             Self::ZeroWidth => "zero_width",

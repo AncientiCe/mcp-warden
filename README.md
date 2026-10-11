@@ -15,6 +15,23 @@ A drop-in stdio proxy for MCP servers. It cleans untrusted tool output before yo
 
 Early development. See `CHANGELOG.md` for what works today.
 
+## Trust labeling
+
+Add `--label` to wrap untrusted result text in provenance tags. `--config examples/trust.toml`
+selects trust rules using `--server-id`. Without a configuration, every server remains untrusted
+unless explicitly started with `--trust trusted`. Labeling is opt-in; the default sanitizer mode
+continues to preserve benign traffic byte for byte.
+
+Trust rules select tools by exact name (`"*"` selects all). Paths support `$`, dotted keys,
+numeric indexes, `[*]`, and descendant keys such as `$..body`. Unknown configuration keys and
+unsupported paths fail at startup. Explicit untrusted paths take precedence over trusted paths.
+Dynamic `author_association` rules affect only the enclosing record: a member's issue does not
+make its comments trusted. Bots stay untrusted. Semi-trusted text is still sanitized.
+
+The supplied map is a starting configuration, not proof that a field or server is trustworthy.
+It leaves Palace untrusted until provenance is available. Tags describe data provenance; they
+are not an authorization boundary.
+
 ## Development
 
 See `AGENTS.md` for the rules (TDD behavior tests, quality gates). Run every gate with `make check`, or `pwsh scripts/check.ps1` on Windows.

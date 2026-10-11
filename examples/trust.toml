@@ -1,0 +1,27 @@
+# Server ids match --server-id. Unknown servers remain untrusted.
+[servers.github]
+default_trust = "untrusted"
+[[servers.github.fields]]
+tools = ["issue_read", "pull_request_read", "list_issues"]
+trusted = ["$..number", "$..state", "$..created_at", "$..updated_at", "$..html_url", "$..author_association", "$..user.login", "$..user.type"]
+untrusted = ["$..title", "$..body", "$..diff", "$..patch"]
+dynamic_trust = { field = "$.author_association", trusted_values = ["OWNER", "MEMBER", "COLLABORATOR"], effect = "semi" }
+
+# No field exceptions: these services expose outside-authored text.
+[servers.fetch]
+default_trust = "untrusted"
+[servers.sentry]
+default_trust = "untrusted"
+[servers.dash0]
+default_trust = "untrusted"
+
+# Opt down only for servers and repositories you actually control.
+[servers.impact]
+default_trust = "trusted"
+[[servers.impact.fields]]
+tools = ["*"]
+untrusted = ["$..issue_body", "$..commit_message", "$..pr_description"]
+
+# Palace is deliberately untrusted until it supplies field provenance.
+[servers.palace]
+default_trust = "untrusted"

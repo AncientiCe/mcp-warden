@@ -14,6 +14,11 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ### Added
 
+- Opt-in `--label` provenance boundaries for untrusted text and JSON-in-text fields, with escaping
+  of forged boundaries. `--config FILE` loads validated TOML trust rules per server/tool/JSON path,
+  including wildcard arrays and descendant keys. Explicit untrusted rules take precedence.
+  Dynamic author associations can suppress labels for semi-trusted records, but never for bots
+  or nested records without their own authorship. MCP envelopes and binary data remain intact.
 - Stdio proxy: `mcp-warden [--server-id ID] [--trust untrusted|trusted] -- <server command>` spawns the real
   MCP server and relays JSON-RPC both ways. Lines it doesn't rewrite are forwarded byte for byte, including
   notifications, non-JSON lines and server-to-client requests. Server stderr passes through and the server's

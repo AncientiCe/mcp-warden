@@ -33,6 +33,7 @@ pub struct Session {
     sanitizer: Sanitizer,
     audit: Option<Audit>,
     pending: Mutex<IndexMap<String, Pending>>,
+    labeler: Option<crate::label::Labeler>,
 }
 
 impl Session {
@@ -48,7 +49,13 @@ impl Session {
             sanitizer,
             audit,
             pending: Mutex::new(IndexMap::new()),
+            labeler: None,
         }
+    }
+
+    pub fn with_labeler(mut self, labeler: Option<crate::label::Labeler>) -> Self {
+        self.labeler = labeler;
+        self
     }
 
     /// Remembers client requests so their responses can be matched up.
@@ -162,7 +169,27 @@ impl Session {
             return;
         };
         let mut findings = Vec::new();
-        sanitize_json(&self.sanitizer, payload, trust, &mut findings);
+        if let Some(labeler) = &self.labeler
+            && !matches!(
+                method.as_str(),
+                "initialize"
+                    | "tools/list"
+                    | "prompts/list"
+                    | "resources/list"
+                    | "resources/templates/list"
+            )
+        {
+            labeler.apply(
+                &self.sanitizer,
+                payload,
+                &self.server_id,
+                target.as_deref().unwrap_or(&method),
+                trust,
+                &mut findings,
+            );
+        } else {
+            sanitize_json(&self.sanitizer, payload, trust, &mut findings);
+        }
         if !findings.is_empty() {
             reports.push(Report {
                 method,
@@ -186,7 +213,7 @@ impl Session {
                 .map(|f| format!("{}({})", f.kind.name(), f.count))
                 .collect();
             eprintln!(
-                "mcp-warden[{}]: {} {}: removed {}",
+                "mcp-warden[{}]: {} {}: applied {}",
                 self.server_id,
                 report.method,
                 report.target.as_deref().unwrap_or("-"),
