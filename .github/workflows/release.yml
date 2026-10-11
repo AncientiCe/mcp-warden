@@ -1,0 +1,183 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # Fail before building anything if the tag, Cargo.toml and CHANGELOG.md disagree.
+  # The release body is the tag's CHANGELOG.md section, so a missing section is an error.
+  notes:
+    name: Release notes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag matches Cargo.toml version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          crate_version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)"
+          if [ "$version" != "$crate_version" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match Cargo.toml version ${crate_version}" >&2
+            exit 1
+          fi
+
+      - name: Extract release notes from changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          awk -v version="$version" '
+            index($0, "## [" version "] - ") == 1 { in_section = 1; next }
+            in_section && /^## \[/ { exit }
+            in_section { print }
+          ' CHANGELOG.md > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "CHANGELOG.md has no '## [${version}] - YYYY-MM-DD' section with entries" >&2
+            exit 1
+          fi
+          cat release-notes.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes.md
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: notes
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive_ext: tar.gz
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            archive_ext: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive_ext: tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            archive_ext: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive_ext: zip
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # The x86_64 Linux runner cannot link aarch64 binaries with the host toolchain.
+      - name: Install aarch64 cross toolchain
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package Unix artifact
+        if: matrix.archive_ext == 'tar.gz'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          asset="mcp-warden-${version}-${{ matrix.target }}"
+          mkdir -p "dist/${asset}"
+          cp "target/${{ matrix.target }}/release/mcp-warden" "dist/${asset}/"
+          cp README.md LICENSE-MIT LICENSE-APACHE CHANGELOG.md "dist/${asset}/"
+          tar -C dist -czf "dist/${asset}.tar.gz" "${asset}"
+          cd dist
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${asset}.tar.gz" > "mcp-warden-${{ matrix.target }}.sha256"
+          else
+            shasum -a 256 "${asset}.tar.gz" > "mcp-warden-${{ matrix.target }}.sha256"
+          fi
+
+      - name: Package Windows artifact
+        if: matrix.archive_ext == 'zip'
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart("v")
+          $asset = "mcp-warden-$version-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path "dist/$asset" | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/mcp-warden.exe" "dist/$asset/"
+          Copy-Item README.md,LICENSE-MIT,LICENSE-APACHE,CHANGELOG.md "dist/$asset/"
+          Compress-Archive -Path "dist/$asset/*" -DestinationPath "dist/$asset.zip"
+          $hash = (Get-FileHash -Algorithm SHA256 "dist/$asset.zip").Hash.ToLowerInvariant()
+          "$hash  $asset.zip" | Out-File -FilePath "dist/mcp-warden-${{ matrix.target }}.sha256" -Encoding ascii
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+          path: |
+            dist/mcp-warden-*-${{ matrix.target }}.${{ matrix.archive_ext }}
+            dist/mcp-warden-${{ matrix.target }}.sha256
+
+  # Publish once every target built, so a release never appears with missing platforms.
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: artifacts/release-notes/release-notes.md
+          files: |
+            artifacts/dist-*/*
+
+  # End-to-end smoke of the published release: the install script must detect
+  # the platform, download the real asset, verify its checksum, and install.
+  install-smoke:
+    name: Release install smoke (${{ matrix.os }})
+    needs: publish
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install from published release (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          MCP_WARDEN_VERSION: ${{ github.ref_name }}
+          MCP_WARDEN_INSTALL_DIR: ${{ runner.temp }}/mcp-warden-bin
+        run: |
+          sh scripts/install.sh
+          "$MCP_WARDEN_INSTALL_DIR/mcp-warden" --version
+      - name: Install from published release (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          MCP_WARDEN_VERSION: ${{ github.ref_name }}
+          MCP_WARDEN_INSTALL_DIR: ${{ runner.temp }}\mcp-warden-bin
+        run: |
+          .\scripts\install.ps1
+          & "$env:MCP_WARDEN_INSTALL_DIR\mcp-warden.exe" --version
