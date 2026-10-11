@@ -20,6 +20,12 @@ Prebuilt binaries for Linux, macOS and Windows ship with each
 [GitHub release](https://github.com/AncientiCe/mcp-warden/releases). The installers download the
 archive for your platform, verify its SHA-256 checksum, and install `mcp-warden`.
 
+macOS and Linux (Homebrew):
+
+```bash
+brew install ancientice/mcp-warden/mcp-warden
+```
+
 macOS and Linux (installs to `~/.local/bin`):
 
 ```bash

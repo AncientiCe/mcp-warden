@@ -34,6 +34,8 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
   (x86_64) archives with checksums. Release notes come from the tag's `CHANGELOG.md` section; the
   release fails if that section is missing or the tag disagrees with `Cargo.toml`. A smoke job then
   installs the published release with the install scripts on all three platforms.
+- Homebrew tap `ancientice/mcp-warden`. Each successful release opens a pull request on
+  `AncientiCe/homebrew-mcp-warden` with the new version and per-platform checksums.
 - `mcp-warden wrap CONFIG` upgrades stdio entries under `mcpServers` or `servers`, enables labeling,
   detection, enforcement and tool pinning, preserves original arguments/environment and unrelated
   settings, and creates an exact backup before writing. Repeated runs are idempotent; invalid entries
