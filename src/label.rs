@@ -8,6 +8,7 @@ use crate::sanitize::{Finding, FindingKind, Sanitizer, Trust};
 
 pub struct Labeler {
     pub map: TrustMap,
+    pub visible: bool,
 }
 
 struct Walk<'a> {
@@ -18,6 +19,7 @@ struct Walk<'a> {
     fallback: Trust,
     findings: &'a mut Vec<Finding>,
     untrusted_seen: bool,
+    visible: bool,
 }
 
 impl Labeler {
@@ -38,6 +40,7 @@ impl Labeler {
             fallback: trust,
             findings,
             untrusted_seen: false,
+            visible: self.visible,
         };
         walk.envelope(value);
         walk.untrusted_seen
@@ -125,7 +128,7 @@ impl Walk<'_> {
                 if let Some(clean) = self.sanitizer.text(text, trust, self.findings) {
                     *text = clean;
                 }
-                if trust == Trust::Untrusted && !semi && !text.is_empty() {
+                if self.visible && trust == Trust::Untrusted && !semi && !text.is_empty() {
                     *text = format!(
                         "<untrusted source=\"{}:{}\" field=\"{}\">\n{}\n</untrusted>",
                         escape(self.server),

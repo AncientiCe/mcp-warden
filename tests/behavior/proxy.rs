@@ -920,3 +920,31 @@ fn trust_configuration_layers_and_explicit_cli_precedence() {
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("unknown field"));
 }
+
+#[test]
+fn field_trust_protects_without_visible_labels() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let config = dir.path().join("trust.toml");
+    let state = dir.path().join("state.json");
+    std::fs::write(&config, "[servers.fake]\ndefault_trust = 'trusted'\n[[servers.fake.fields]]\ntools = ['json']\nuntrusted = ['$.body']\n").unwrap();
+    let mut s = Session::wrapped(&[
+        "--config",
+        config.to_str().unwrap(),
+        "--enforce",
+        "--state-file",
+        state.to_str().unwrap(),
+    ]);
+    let input = json!({"body":"<!-- instruction -->visible", "metadata":"<!-- keep -->metadata"});
+    let text = s.call_tool_text(1, "json", json!({"value":input}));
+    assert_eq!(
+        serde_json::from_str::<Value>(&text).unwrap(),
+        json!({"body":"visible", "metadata":"<!-- keep -->metadata"})
+    );
+    let reply = s.call_tool(2, "create_issue", json!({"body":"publish"}));
+    assert!(reply["result"]["_meta"]["mcp-warden/approval_token"].is_string());
+    let request = json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"json","arguments":{"value":{"body":"ordinary & <visible> text", "metadata":"ok"}}}});
+    let mut direct = Session::direct();
+    s.send(&request);
+    direct.send(&request);
+    assert_eq!(s.read_raw(), direct.read_raw());
+}

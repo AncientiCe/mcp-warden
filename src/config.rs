@@ -57,6 +57,10 @@ pub struct TrustMap {
 }
 
 impl TrustMap {
+    pub fn has_fields(&self) -> bool {
+        !self.fields.is_empty()
+    }
+
     pub fn load(path: Option<&Path>, server: &str) -> Result<Self> {
         let home = std::env::var_os("MCP_WARDEN_HOME")
             .map(PathBuf::from)

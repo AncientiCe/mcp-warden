@@ -12,6 +12,8 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Field trust governs sanitization and shared taint even when visible labels are disabled.
+
 - Explicitly untrusted fields taint the session even on otherwise trusted servers, including
   semi-trusted records whose provenance labels are suppressed.
 - Pending request tracking is capped at 4096 entries and releases cancelled requests. Late or

@@ -127,8 +127,8 @@ override a server's supplied `default_trust` and replace its supplied `fields` a
 settings are inherited. An explicit `--trust` overrides the configured server default.
 Only missing automatically discovered files are ignored. Invalid or unreadable files stop
 startup, including invalid rules for other servers. Treat project configuration as security
-policy: review it before starting a client in a downloaded repository. Field labeling still
-requires `--label`; server default trust applies even without labeling. Offline `scan` uses
+policy: review it before starting a client in a downloaded repository. Visible labeling still
+requires `--label`; field and server trust apply even without labeling. Offline `scan` uses
 its command-line options and does not discover these files.
 
 Rules select tools by exact name. `"*"` selects every tool. Paths support `$`, dotted keys, numeric indexes, `[*]`, and descendant keys such as `$..body`. An explicit untrusted path wins over a trusted path on the same field.

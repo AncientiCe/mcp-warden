@@ -205,7 +205,12 @@ fn wrap(args: WrapArgs) -> Result<ExitCode> {
     };
     let session = Arc::new(
         Session::new(args.server_id, trust, args.filter.sanitizer()?, audit)
-            .with_labeler(args.label.then_some(mcp_warden::label::Labeler { map }))
+            .with_labeler(
+                (args.label || map.has_fields()).then_some(mcp_warden::label::Labeler {
+                    map,
+                    visible: args.label,
+                }),
+            )
             .with_gate(gate)
             .with_pins(args.pin_tools.map(|path| mcp_warden::pins::Pins { path })),
     );
