@@ -35,6 +35,11 @@ struct Cli {
 
 #[derive(Args)]
 struct WrapArgs {
+    /// Enforce shared taint-based policy on outbound MCP calls.
+    #[arg(long)]
+    enforce: bool,
+    #[command(flatten)]
+    state: StateArgs,
     /// Add provenance boundaries around untrusted result text.
     #[arg(long)]
     label: bool,
@@ -55,6 +60,13 @@ struct WrapArgs {
     /// The real server command, after `--`.
     #[arg(last = true)]
     server: Vec<String>,
+}
+
+#[derive(Args)]
+struct StateArgs {
+    /// Shared taint state (default: ~/.mcp-warden/state.json).
+    #[arg(long)]
+    state_file: Option<PathBuf>,
 }
 
 #[derive(Args)]
@@ -88,6 +100,22 @@ impl FilterArgs {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Display current shared taint and pending approvals as JSON.
+    Status {
+        #[command(flatten)]
+        state: StateArgs,
+    },
+    /// Authorize one exact pending MCP call for one use (expires after ten minutes).
+    Approve {
+        token: String,
+        #[command(flatten)]
+        state: StateArgs,
+    },
+    /// Clear shared taint and all approvals after reviewing the session.
+    Untaint {
+        #[command(flatten)]
+        state: StateArgs,
+    },
     /// Measure detection against malicious.json and benign.json in a corpus directory.
     Replay { directory: PathBuf },
     /// Sanitize a file (or stdin) offline: clean text on stdout, findings as JSON lines on stderr.
@@ -105,6 +133,9 @@ enum Command {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {
+        Some(Command::Status { state }) => state_command(state, None, false),
+        Some(Command::Approve { token, state }) => state_command(state, Some(token), false),
+        Some(Command::Untaint { state }) => state_command(state, None, true),
         Some(Command::Replay { directory }) => {
             mcp_warden::replay::corpus(&directory).and_then(|report| {
                 writeln!(std::io::stdout(), "{report}")?;
@@ -149,17 +180,42 @@ fn wrap(args: WrapArgs) -> Result<ExitCode> {
     };
     let map = mcp_warden::config::TrustMap::load(args.config.as_deref(), &args.server_id)?;
     let trust = map.default_trust.unwrap_or(args.filter.trust);
+    let gate = if args.enforce {
+        Some(mcp_warden::policy::Gate {
+            store: mcp_warden::taint::Store::open(args.state.state_file)?,
+        })
+    } else {
+        None
+    };
     let session = Arc::new(
         Session::new(args.server_id, trust, args.filter.sanitizer()?, audit)
-            .with_labeler(args.label.then_some(mcp_warden::label::Labeler { map })),
+            .with_labeler(args.label.then_some(mcp_warden::label::Labeler { map }))
+            .with_gate(gate),
     );
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
-    let code = runtime.block_on(relay::run(session, &args.server))?;
+    let outcome = runtime.block_on(relay::run(session, &args.server));
+    runtime.shutdown_background();
+    let code = outcome?;
     // The task reading our stdin blocks in a thread the runtime would wait for
     // on shutdown; the client may never close it, so exit right away.
     std::process::exit(code);
+}
+
+fn state_command(args: StateArgs, approval: Option<String>, clear: bool) -> Result<ExitCode> {
+    let store = mcp_warden::taint::Store::open(args.state_file)?;
+    if let Some(token) = approval {
+        store.approve(&token)?;
+    }
+    let status = store.with_state(|state| {
+        if clear {
+            *state = mcp_warden::taint::State::default();
+        }
+        Ok(serde_json::to_value(state)?)
+    })?;
+    writeln!(std::io::stdout(), "{status}")?;
+    Ok(ExitCode::SUCCESS)
 }
 
 fn scan(file: Option<PathBuf>, filter: &FilterArgs, fail_on_findings: bool) -> Result<ExitCode> {

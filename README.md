@@ -149,8 +149,6 @@ Files older than 30 days are deleted the next time warden starts. The log can co
 - `--detect` and `--label` are optional. The default proxy only strips the hidden-content rules above.
 - Nothing in this version blocks a later tool call because an earlier result was untrusted.
 
-## Development
-
 ## MCP action control
 
 Add `--enforce` to every wrapped server to share taint and gate subsequent sensitive calls.

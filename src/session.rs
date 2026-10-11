@@ -3,6 +3,7 @@
 
 use std::sync::Mutex;
 
+use anyhow::Result;
 use indexmap::IndexMap;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -13,6 +14,11 @@ use crate::sanitize::{Finding, Sanitizer, Trust};
 
 /// Unanswered requests must not accumulate for the lifetime of a connection.
 const MAX_PENDING_REQUESTS: usize = 4096;
+
+pub struct ClientLine {
+    pub forwarded: Option<Vec<u8>>,
+    pub reply: Option<Vec<u8>>,
+}
 
 struct Pending {
     method: String,
@@ -34,6 +40,7 @@ pub struct Session {
     audit: Option<Audit>,
     pending: Mutex<IndexMap<String, Pending>>,
     labeler: Option<crate::label::Labeler>,
+    gate: Option<crate::policy::Gate>,
 }
 
 impl Session {
@@ -50,12 +57,88 @@ impl Session {
             audit,
             pending: Mutex::new(IndexMap::new()),
             labeler: None,
+            gate: None,
         }
     }
 
     pub fn with_labeler(mut self, labeler: Option<crate::label::Labeler>) -> Self {
         self.labeler = labeler;
         self
+    }
+
+    pub fn with_gate(mut self, gate: Option<crate::policy::Gate>) -> Self {
+        self.gate = gate;
+        self
+    }
+
+    /// Forwarded bytes plus an optional local reply. Batch members are gated individually.
+    pub fn authorize_client_line(&self, line: &[u8]) -> Result<ClientLine> {
+        let Some(gate) = &self.gate else {
+            return Ok(ClientLine {
+                forwarded: Some(line.to_vec()),
+                reply: None,
+            });
+        };
+        let Ok(value) = serde_json::from_slice::<Value>(split_eol(line).0) else {
+            return Ok(ClientLine {
+                forwarded: Some(line.to_vec()),
+                reply: None,
+            });
+        };
+        let mut allowed = Vec::new();
+        let mut blocked = Vec::new();
+        for message in messages(&value) {
+            if let Some(reply) = gate.check(&self.server_id, message)? {
+                let report = Report {
+                    method: "tools/call".into(),
+                    target: message["params"]["name"].as_str().map(str::to_string),
+                    trust: self.trust,
+                    findings: vec![Finding {
+                        kind: crate::sanitize::FindingKind::Policy,
+                        count: 1,
+                        payload: reply["result"]["content"][0]["text"]
+                            .as_str()
+                            .map(str::to_string),
+                        rule_ids: Vec::new(),
+                        score: None,
+                    }],
+                };
+                self.report(
+                    &[report],
+                    &serde_json::to_vec(message)?,
+                    &serde_json::to_vec(&reply)?,
+                );
+                // JSON-RPC notifications have no response, but are still gated.
+                if message.get("id").is_some() {
+                    blocked.push(reply);
+                }
+            } else {
+                allowed.push(message.clone());
+            }
+        }
+        if allowed.len() == messages(&value).len() {
+            return Ok(ClientLine {
+                forwarded: Some(line.to_vec()),
+                reply: None,
+            });
+        }
+        let encode = |items: Vec<Value>| -> Result<Option<Vec<u8>>> {
+            if items.is_empty() {
+                return Ok(None);
+            }
+            let value = if value.is_array() {
+                Value::Array(items)
+            } else {
+                items.into_iter().next().unwrap_or(Value::Null)
+            };
+            let mut bytes = serde_json::to_vec(&value)?;
+            bytes.extend_from_slice(split_eol(line).1);
+            Ok(Some(bytes))
+        };
+        Ok(ClientLine {
+            forwarded: encode(allowed)?,
+            reply: encode(blocked)?,
+        })
     }
 
     /// Remembers client requests so their responses can be matched up.
@@ -102,42 +185,46 @@ impl Session {
     }
 
     /// Returns the rewritten line, or `None` to forward the original bytes.
-    pub fn on_server_line(&self, line: &[u8]) -> Option<Vec<u8>> {
+    pub fn on_server_line(&self, line: &[u8]) -> Result<Option<Vec<u8>>> {
         let (body, eol) = split_eol(line);
-        let mut value: Value = serde_json::from_slice(body).ok()?;
+        let Ok(mut value) = serde_json::from_slice::<Value>(body) else {
+            return Ok(None);
+        };
         let mut reports = Vec::new();
         match &mut value {
-            Value::Array(batch) => batch
-                .iter_mut()
-                .for_each(|msg| self.inspect(msg, &mut reports)),
-            msg => self.inspect(msg, &mut reports),
+            Value::Array(batch) => {
+                for msg in batch {
+                    self.inspect(msg, &mut reports)?;
+                }
+            }
+            msg => self.inspect(msg, &mut reports)?,
         }
         if reports.is_empty() {
-            return None;
+            return Ok(None);
         }
-        let mut out = serde_json::to_vec(&value).ok()?;
+        let mut out = serde_json::to_vec(&value)?;
         self.report(&reports, body, &out);
         out.extend_from_slice(eol);
-        Some(out)
+        Ok(Some(out))
     }
 
-    fn inspect(&self, msg: &mut Value, reports: &mut Vec<Report>) {
+    fn inspect(&self, msg: &mut Value, reports: &mut Vec<Report>) -> Result<()> {
         let Some(obj) = msg.as_object_mut() else {
-            return;
+            return Ok(());
         };
         let (method, target, trust, field) =
             if let Some(method) = obj.get("method").and_then(Value::as_str) {
                 // Server-to-client requests whose text reaches a model or a human.
                 if !matches!(method, "sampling/createMessage" | "elicitation/create") {
-                    return;
+                    return Ok(());
                 }
                 (method.to_string(), None, self.trust, "params")
             } else {
                 let Some(id) = obj.get("id") else {
-                    return;
+                    return Ok(());
                 };
                 if !obj.contains_key("result") && !obj.contains_key("error") {
-                    return;
+                    return Ok(());
                 }
                 // A cancelled or evicted request can still receive a response.
                 // Losing correlation must never become a sanitizer bypass.
@@ -156,7 +243,7 @@ impl Session {
                     | "prompts/list"
                     | "resources/list"
                     | "resources/templates/list" => Trust::Trusted,
-                    _ => return,
+                    _ => return Ok(()),
                 };
                 let field = if obj.contains_key("error") {
                     "error"
@@ -166,7 +253,7 @@ impl Session {
                 (pending.method, pending.target, trust, field)
             };
         let Some(payload) = obj.get_mut(field) else {
-            return;
+            return Ok(());
         };
         let mut findings = Vec::new();
         if let Some(labeler) = &self.labeler
@@ -190,6 +277,29 @@ impl Session {
         } else {
             sanitize_json(&self.sanitizer, payload, trust, &mut findings);
         }
+        if let Some(gate) = &self.gate
+            && trust == Trust::Untrusted
+        {
+            let score = findings
+                .iter()
+                .filter_map(|f| f.score)
+                .fold(0.0_f64, f64::max);
+            let level = if score >= 0.75 {
+                crate::taint::Level::Hostile
+            } else if score >= 0.5 {
+                crate::taint::Level::Suspicious
+            } else {
+                crate::taint::Level::Tainted
+            };
+            gate.store.observe(
+                level,
+                &format!(
+                    "{}:{}",
+                    self.server_id,
+                    target.as_deref().unwrap_or(&method)
+                ),
+            )?;
+        }
         if !findings.is_empty() {
             reports.push(Report {
                 method,
@@ -198,6 +308,7 @@ impl Session {
                 findings,
             });
         }
+        Ok(())
     }
 
     fn take_pending(&self, id: &Value) -> Option<Pending> {

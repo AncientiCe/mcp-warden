@@ -101,6 +101,12 @@ impl Server {
         let text = args["text"].as_str().unwrap_or_default();
         Ok(Some(match name {
             "echo" => text_result(text),
+            "send_data" => {
+                let mut connection =
+                    std::net::TcpStream::connect(args["address"].as_str().unwrap_or_default())?;
+                connection.write_all(text.as_bytes())?;
+                text_result("sent")
+            }
             "linger" => {
                 self.send(
                     &json!({ "jsonrpc": "2.0", "method": "notifications/message",

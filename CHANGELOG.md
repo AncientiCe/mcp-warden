@@ -14,6 +14,13 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ### Added
 
+- Opt-in `--enforce` shared taint-based MCP action policy, independent of heuristic detection.
+  Untrusted responses taint the shared session before delivery; sensitive and unknown calls require
+  confirmation or are denied at higher taint. Approved calls are bound to server, tool and arguments,
+  expire after ten minutes, and are consumed once. `status`, `approve TOKEN`, and `untaint` manage
+  the shared state; `--state-file` selects an isolated scope. State uses an OS file lock, a two-hour
+  inactivity TTL, bounded pending approvals, and fail-closed handling of corrupt or inaccessible state.
+  Blocks appear as MCP tool errors and audit findings. Direct client tools remain outside this boundary.
 - Opt-in `--detect` heuristics for the proxy and `scan`: normalized override/role/tool/exfiltration/
   secret/urgency/memory rules, bounded base64 probes, rule ids and scores in findings, annotations
   at score 0.5 and field withholding at 0.9. Detection is advisory and does not replace action policy.

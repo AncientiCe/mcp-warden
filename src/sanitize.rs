@@ -28,6 +28,8 @@ pub enum Trust {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FindingKind {
+    /// An outbound MCP call was blocked by action policy.
+    Policy,
     /// Heuristic prompt-injection evidence, with rule ids and a combined score.
     Injection,
     /// An external text field was wrapped in a provenance boundary.
@@ -55,6 +57,7 @@ pub enum FindingKind {
 impl FindingKind {
     pub fn name(self) -> &'static str {
         match self {
+            Self::Policy => "policy",
             Self::Injection => "injection",
             Self::Provenance => "provenance",
             Self::TagChars => "tag_chars",

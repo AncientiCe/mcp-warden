@@ -24,6 +24,8 @@ pub async fn run(session: Arc<Session>, command: &[String]) -> Result<i32> {
         .with_context(|| format!("failed to start server `{program}`"))?;
     let mut server_in = child.stdin.take().context("server stdin not captured")?;
     let server_out = child.stdout.take().context("server stdout not captured")?;
+    let client_out = Arc::new(tokio::sync::Mutex::new(tokio::io::stdout()));
+    let upstream_out = client_out.clone();
 
     let upstream_session = session.clone();
     let upstream = tokio::spawn(async move {
@@ -35,16 +37,25 @@ pub async fn run(session: Arc<Session>, command: &[String]) -> Result<i32> {
                 Ok(0) | Err(_) => break,
                 Ok(_) => {}
             }
-            upstream_session.on_client_line(&line);
-            if server_in.write_all(&line).await.is_err() || server_in.flush().await.is_err() {
+            let authorization = upstream_session.authorize_client_line(&line)?;
+            if let Some(reply) = authorization.reply {
+                let mut client = upstream_out.lock().await;
+                client.write_all(&reply).await?;
+                client.flush().await?;
+            }
+            let Some(forwarded) = authorization.forwarded else {
+                continue;
+            };
+            upstream_session.on_client_line(&forwarded);
+            if server_in.write_all(&forwarded).await.is_err() || server_in.flush().await.is_err() {
                 break;
             }
         }
         // Dropping `server_in` closes the server's stdin: the MCP way to ask it to exit.
+        Ok::<(), anyhow::Error>(())
     });
 
     let mut server = BufReader::new(server_out);
-    let mut client = tokio::io::stdout();
     let mut line = Vec::new();
     loop {
         line.clear();
@@ -56,7 +67,8 @@ pub async fn run(session: Arc<Session>, command: &[String]) -> Result<i32> {
         {
             break;
         }
-        let rewritten = session.on_server_line(&line);
+        let rewritten = session.on_server_line(&line)?;
+        let mut client = client_out.lock().await;
         client
             .write_all(rewritten.as_deref().unwrap_or(&line))
             .await
@@ -65,7 +77,11 @@ pub async fn run(session: Arc<Session>, command: &[String]) -> Result<i32> {
     }
 
     let status = child.wait().await.context("waiting for server")?;
-    upstream.abort();
+    if upstream.is_finished() {
+        upstream.await.context("client relay task")??;
+    } else {
+        upstream.abort();
+    }
     Ok(status.code().unwrap_or(1))
 }
 
