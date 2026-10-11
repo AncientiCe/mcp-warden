@@ -354,6 +354,7 @@ dependencies = [
  "time",
  "tokio",
  "which",
+ "windows-sys",
 ]
 
 [[package]]

@@ -12,6 +12,9 @@ use mcp_warden::relay;
 use mcp_warden::sanitize::{Policy, Sanitizer, Trust};
 use mcp_warden::session::Session;
 
+#[cfg(windows)]
+mod process_job;
+
 /// Exit code of `scan --fail-on-findings` when something was found.
 const FINDINGS_EXIT_CODE: u8 = 3;
 
@@ -105,6 +108,8 @@ fn wrap(args: WrapArgs) -> Result<ExitCode> {
     if args.server.is_empty() {
         bail!("no server command given\n\nusage: mcp-warden [OPTIONS] -- <SERVER COMMAND>...");
     }
+    #[cfg(windows)]
+    process_job::contain_process_tree().context("configuring server process cleanup")?;
     let audit = if args.no_audit {
         None
     } else {

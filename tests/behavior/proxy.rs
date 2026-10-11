@@ -307,6 +307,46 @@ fn client_disconnect_shuts_the_server_down() {
     assert_eq!(status.code(), Some(0));
 }
 
+#[cfg(windows)]
+#[test]
+fn killing_warden_terminates_a_server_that_ignores_stdin() {
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+    use windows_sys::Win32::Foundation::{WAIT_OBJECT_0, WAIT_TIMEOUT};
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE, TerminateProcess, WaitForSingleObject,
+    };
+
+    let mut s = Session::wrapped(&[]);
+    s.initialize();
+    s.send(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": { "name": "linger", "arguments": {} } }));
+    let pid = s.read()["params"]["pid"].as_u64().unwrap() as u32;
+    // SAFETY: the PID comes from our test server; take ownership of the returned handle.
+    let process = unsafe {
+        let handle = OpenProcess(PROCESS_SYNCHRONIZE | PROCESS_TERMINATE, 0, pid);
+        assert!(!handle.is_null());
+        OwnedHandle::from_raw_handle(handle)
+    };
+    // SAFETY: the owned handle remains valid through both waits and cleanup.
+    unsafe {
+        assert_eq!(
+            WaitForSingleObject(process.as_raw_handle(), 0),
+            WAIT_TIMEOUT
+        );
+        s.kill();
+        let result = WaitForSingleObject(process.as_raw_handle(), 5000);
+        // Clean up even in the red phase so the test never leaves an orphan.
+        if result != WAIT_OBJECT_0 {
+            TerminateProcess(process.as_raw_handle(), 1);
+            WaitForSingleObject(process.as_raw_handle(), 5000);
+        }
+        assert_eq!(
+            result, WAIT_OBJECT_0,
+            "server survived warden's termination"
+        );
+    }
+}
+
 #[test]
 fn missing_server_command_is_a_usage_error() {
     let output = std::process::Command::new(crate::harness::warden_exe())

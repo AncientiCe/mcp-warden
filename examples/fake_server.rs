@@ -101,6 +101,15 @@ impl Server {
         let text = args["text"].as_str().unwrap_or_default();
         Ok(Some(match name {
             "echo" => text_result(text),
+            "linger" => {
+                self.send(
+                    &json!({ "jsonrpc": "2.0", "method": "notifications/message",
+                    "params": { "pid": std::process::id() } }),
+                )?;
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(60));
+                }
+            }
             "json" => text_result(&go_json(&args["value"])),
             "json_pretty" => text_result(
                 &serde_json::to_string_pretty(&args["value"]).map_err(io::Error::other)?,

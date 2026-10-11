@@ -182,6 +182,12 @@ impl Session {
         }
     }
 
+    #[cfg(windows)]
+    pub fn kill(&mut self) {
+        self.child.kill().unwrap();
+        self.wait();
+    }
+
     /// Every audit entry written so far, across all files in the audit dir.
     pub fn audit(&self) -> Vec<Value> {
         read_audit(self.audit_dir.path())

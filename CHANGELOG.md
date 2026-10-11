@@ -4,6 +4,11 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows now terminates the wrapped server process tree when warden exits, including forced
+  termination. Job membership is established before spawning the server to avoid orphan races.
+
 ### Added
 
 - Stdio proxy: `mcp-warden [--server-id ID] [--trust untrusted|trusted] -- <server command>` spawns the real
