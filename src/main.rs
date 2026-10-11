@@ -152,6 +152,10 @@ enum Command {
     Show { id: String },
     /// Let the agent see withheld content after you reviewed it.
     Release { id: String },
+    /// Treat a project the agent cloned as your own.
+    Trust { dir: PathBuf },
+    /// Check a project's files like outside content.
+    Distrust { dir: PathBuf },
     /// Measure detection against malicious.json and benign.json in a corpus directory.
     Replay { directory: PathBuf },
     /// Sanitize a file (or stdin) offline: clean text on stdout, findings as JSON lines on stderr.
@@ -182,6 +186,8 @@ fn main() -> ExitCode {
         Some(Command::Hook) => hook(),
         Some(Command::Show { id }) => show(&id, false),
         Some(Command::Release { id }) => show(&id, true),
+        Some(Command::Trust { dir }) => trust(&dir, false),
+        Some(Command::Distrust { dir }) => trust(&dir, true),
         Some(Command::Install { target }) => install(target, true),
         Some(Command::Uninstall { target }) => install(target, false),
         Some(Command::Replay { directory }) => {
@@ -300,6 +306,13 @@ fn hook() -> Result<ExitCode> {
     if let Some(output) = mcp_warden::hook::Hook::new()?.handle(&input)? {
         writeln!(std::io::stdout(), "{output}")?;
     }
+    Ok(ExitCode::SUCCESS)
+}
+
+fn trust(dir: &std::path::Path, suspicious: bool) -> Result<ExitCode> {
+    let dir = mcp_warden::projects::Projects::open()?.set(dir, suspicious)?;
+    let state = if suspicious { "SUSPICIOUS" } else { "trusted" };
+    writeln!(std::io::stdout(), "{}: {state}", dir.display())?;
     Ok(ExitCode::SUCCESS)
 }
 

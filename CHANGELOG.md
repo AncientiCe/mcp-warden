@@ -16,6 +16,11 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 - `mcp-warden show ID` prints quarantined content; `mcp-warden release ID` lets the agent see it.
   The hook denies the agent running either command or reading the quarantine directory.
+- Projects the agent clones start SUSPICIOUS: their files and commands are checked like outside
+  content until the user runs `mcp-warden trust DIR` (`distrust` reverses it). Cloning does not
+  prompt; a flag in such a project tells the user how to trust it.
+- The hook stays silent unless it withholds injection or removes smuggling characters; ordinary
+  hidden markup such as issue-template comments is stripped without a message.
 
 ### Removed
 

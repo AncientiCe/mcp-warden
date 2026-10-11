@@ -192,6 +192,22 @@ fn only_the_flagged_field_of_an_item_is_withheld() {
 }
 
 #[test]
+fn ordinary_hidden_markup_is_stripped_silently() {
+    let home = Home::new();
+    let output = home.hook(&bash(
+        "gh issue view 3",
+        "Steps to reproduce: run it.<!-- Please fill in the template -->",
+    ));
+    let value = hook_output(&output);
+    let specific = &value["hookSpecificOutput"];
+    assert_eq!(
+        specific["updatedToolOutput"]["stdout"],
+        "Steps to reproduce: run it."
+    );
+    assert!(specific.get("additionalContext").is_none(), "{specific}");
+}
+
+#[test]
 fn hidden_text_is_stripped_without_showing_it_to_the_agent() {
     let home = Home::new();
     let output = home.hook(&bash(

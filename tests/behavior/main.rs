@@ -5,5 +5,6 @@ mod corpus;
 mod harness;
 mod hook;
 mod install;
+mod project_trust;
 mod proxy;
 mod scan;

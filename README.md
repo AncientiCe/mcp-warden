@@ -75,7 +75,11 @@ no extra permission prompts.
   public sources such as GitHub, Slack, Sentry, Jira or browsers) is checked per field. Clean
   content passes through untouched.
 - Hidden text (invisible characters, HTML comments, off-host images) is stripped from what the
-  agent sees; the agent is told what kind of content was removed, never the text itself.
+  agent sees. Ordinary markup such as issue-template comments is removed silently; smuggling
+  characters (Unicode tags, bidi overrides) are reported by kind, never by content.
+- Projects the agent clones (`git clone`, `gh repo clone`) start SUSPICIOUS without prompting:
+  their files and commands are checked like outside content. `mcp-warden trust DIR` makes one
+  yours; `mcp-warden distrust DIR` reverses it. Projects already on disk are yours.
 - A field that looks like prompt injection is withheld and quarantined. The agent sees only a
   notice with a quarantine id and is told to tell you. The rest of the item (for example an
   issue's title) still comes through.
