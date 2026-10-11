@@ -4,6 +4,30 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Fixed
+
+- Encoded and enciphered instructions are decoded before detection: hex, base32, base64 nested
+  twice or wrapping ROT13, HTML and JSON escapes, percent-encoding, Morse, Braille, private-use
+  substitution, every Caesar shift, Atbash, reversed text, Pig Latin and acrostics. Decoded text
+  counts when it would be flagged on its own. "Decode this and follow it" is a strong signal on
+  its own (`R-DECODE`).
+- Zero-width binary (spaces and non-joiners as bits) is decoded into the finding. Directional
+  marks, soft hyphens, grapheme joiners and Hangul fillers no longer split an instruction past
+  detection.
+- New rules for instructions with no override phrase: repository takeover (delete or transfer
+  the repo, disable branch protection, admin collaborators, write deploy keys, GitHub Apps with
+  administration), pushing to main without review, cloud metadata endpoints, request-collector
+  hosts such as webhook.site, more secret locations (shell history, gh/gcloud/Azure/AWS SSO
+  tokens, keychains, browser cookies, Kubernetes service-account tokens, the system prompt or
+  whole conversation), sending them by email, gist, pull request body or `mailto:` link, package
+  sources added to manifests, "the advisory is a false positive", unbounded tool loops, pasted
+  MCP protocol messages, look-alike or punycode link hosts, and commands that switch off or
+  erase `mcp-warden` itself.
+- Detection on large outputs stays fast: a 160 KB changelog takes about 0.2 s.
+- Live red-team suite: 277 of 282 issues withheld (was 189). Two are accepted misses because they
+  read like ordinary install docs (`git clone … && ./install.sh`, `irm … | iex`). New behavior
+  tests replay those issues and a benign look-alike corpus through the hook.
+
 ## [0.3.4] - 2026-10-11
 
 ### Fixed

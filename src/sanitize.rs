@@ -221,8 +221,14 @@ impl Sanitizer {
             }
             if let Some(detector) = &self.detector {
                 let hidden = findings.len() > first_finding;
+                // The cleaned text only adds evidence when something was removed.
+                let cleaned = if text.as_ref() == input {
+                    ""
+                } else {
+                    text.as_ref()
+                };
                 let evidence = format!(
-                    "{input}\n{text}\n{}",
+                    "{input}\n{cleaned}\n{}",
                     findings[first_finding..]
                         .iter()
                         .filter_map(|f| f.payload.as_deref())
@@ -438,6 +444,8 @@ fn strip_invisible(s: &str, findings: &mut Vec<Finding>) -> Option<String> {
     let (mut tags, mut tag_payload) = (0, String::new());
     let (mut selectors, mut selector_bytes) = (0, Vec::new());
     let (mut zero_width, mut bidi) = (0, 0);
+    // Zero-width space and non-joiner used as 0 and 1 bits.
+    let mut bits = Vec::new();
 
     for (i, &c) in chars.iter().enumerate() {
         let prev = i.checked_sub(1).and_then(|p| chars.get(p));
@@ -468,7 +476,12 @@ fn strip_invisible(s: &str, findings: &mut Vec<Finding>) -> Option<String> {
             0x200C | 0x200D if visible_non_ascii(prev) && visible_non_ascii(next) => out.push(c),
             0xFEFF if i == 0 => out.push(c),
             0x202A..=0x202E | 0x2066..=0x2069 => bidi += 1,
-            _ if is_invisible(c) => zero_width += 1,
+            _ if is_invisible(c) => {
+                zero_width += 1;
+                if matches!(c as u32, 0x200B | 0x200C) {
+                    bits.push(c as u32 == 0x200C);
+                }
+            }
             _ => out.push(c),
         }
     }
@@ -485,12 +498,38 @@ fn strip_invisible(s: &str, findings: &mut Vec<Finding>) -> Option<String> {
         ));
     }
     if zero_width > 0 {
-        findings.push(Finding::new(FindingKind::ZeroWidth, zero_width, None));
+        findings.push(Finding::new(
+            FindingKind::ZeroWidth,
+            zero_width,
+            zero_width_binary(&bits),
+        ));
     }
     if bidi > 0 {
         findings.push(Finding::new(FindingKind::Bidi, bidi, None));
     }
     (out.len() != s.len()).then_some(out)
+}
+
+/// Text spelled in zero-width bits, eight per character, in either polarity.
+fn zero_width_binary(bits: &[bool]) -> Option<String> {
+    if bits.len() < 32 {
+        return None;
+    }
+    [false, true].into_iter().find_map(|flip| {
+        let text: String = bits
+            .as_chunks::<8>()
+            .0
+            .iter()
+            .map(|byte| {
+                byte.iter()
+                    .fold(0u8, |acc, bit| (acc << 1) | u8::from(*bit != flip))
+                    as char
+            })
+            .collect();
+        text.chars()
+            .all(|c| c == ' ' || c.is_ascii_graphic())
+            .then_some(text)
+    })
 }
 
 fn is_control(c: char) -> bool {
