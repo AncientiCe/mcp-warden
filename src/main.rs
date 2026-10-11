@@ -101,6 +101,21 @@ impl FilterArgs {
     }
 }
 
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum Client {
+    ClaudeCode,
+}
+
+#[derive(Args)]
+struct ClientArgs {
+    /// Agent client to configure.
+    #[arg(value_enum)]
+    client: Client,
+    /// Settings file [default: ~/.claude/settings.json].
+    #[arg(long)]
+    settings: Option<PathBuf>,
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// Wrap stdio entries in a JSON MCP client config, preserving an exact backup.
@@ -120,6 +135,16 @@ enum Command {
     Untaint {
         #[command(flatten)]
         state: StateArgs,
+    },
+    /// Register `mcp-warden hook` for every tool in an agent client (backs up the settings first).
+    Install {
+        #[command(flatten)]
+        target: ClientArgs,
+    },
+    /// Remove warden's hooks from an agent client, keeping all other settings.
+    Uninstall {
+        #[command(flatten)]
+        target: ClientArgs,
     },
     /// Claude Code hook: reads one hook event on stdin and scans tool results from any source.
     Hook {
@@ -154,6 +179,8 @@ fn main() -> ExitCode {
         Some(Command::Approve { token, state }) => state_command(state, Some(token), false),
         Some(Command::Untaint { state }) => state_command(state, None, true),
         Some(Command::Hook { state }) => hook(state),
+        Some(Command::Install { target }) => install(target, true),
+        Some(Command::Uninstall { target }) => install(target, false),
         Some(Command::Replay { directory }) => {
             mcp_warden::replay::corpus(&directory).and_then(|report| {
                 writeln!(std::io::stdout(), "{report}")?;
@@ -247,6 +274,18 @@ fn state_command(args: StateArgs, approval: Option<String>, clear: bool) -> Resu
         Ok(serde_json::to_value(state)?)
     })?;
     writeln!(std::io::stdout(), "{status}")?;
+    Ok(ExitCode::SUCCESS)
+}
+
+fn install(target: ClientArgs, install: bool) -> Result<ExitCode> {
+    let Client::ClaudeCode = target.client;
+    let settings = match target.settings {
+        Some(path) => path,
+        None => mcp_warden::install::default_settings()?,
+    };
+    let executable = std::env::current_exe().context("locating the mcp-warden executable")?;
+    let report = mcp_warden::install::claude_code(&settings, &executable, install)?;
+    writeln!(std::io::stdout(), "{report}")?;
     Ok(ExitCode::SUCCESS)
 }
 

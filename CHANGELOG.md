@@ -19,6 +19,9 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
   own state), as are WebFetch, file writes and MCP tools. Confirmation uses Claude Code's own
   permission prompt, even for pre-approved commands; clean sessions and routine local work stay
   silent.
+- `mcp-warden install claude-code` registers the hook for every tool in `~/.claude/settings.json`
+  (or `--settings PATH`), preserving existing settings and hooks with an exact backup. Re-running
+  changes nothing; `mcp-warden uninstall claude-code` removes only warden's entries.
 
 ### Fixed
 

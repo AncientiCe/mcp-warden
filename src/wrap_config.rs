@@ -2,7 +2,7 @@
 
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
@@ -89,6 +89,21 @@ pub fn rewrite(path: &Path, executable: &Path) -> Result<Value> {
     }
     let mut updated = serde_json::to_vec_pretty(&config)?;
     updated.push(b'\n');
+    let backup = write_with_backup(&mut file, &path, &original, &updated)?;
+    Ok(json!({"wrapped":wrapped,"skipped":skipped,"backup":backup}))
+}
+
+/// Writes `updated` over a locked, already-read `file`, keeping an exact copy of
+/// `original` next to it first. Returns the backup path.
+pub fn write_with_backup(
+    file: &mut File,
+    path: &Path,
+    original: &[u8],
+    updated: &[u8],
+) -> Result<PathBuf> {
+    let parent = path
+        .parent()
+        .context("configuration has no parent directory")?;
     let mut random = [0u8; 12];
     getrandom::fill(&mut random).map_err(|e| anyhow::anyhow!("backup randomness: {e}"))?;
     let filename = path
@@ -105,10 +120,10 @@ pub fn rewrite(path: &Path, executable: &Path) -> Result<Value> {
     }
     let mut backup_file = options.open(&backup)?;
     backup_file.set_permissions(file.metadata()?.permissions())?;
-    backup_file.write_all(&original)?;
+    backup_file.write_all(original)?;
     backup_file.sync_all()?;
     file.seek(SeekFrom::Start(0))?;
-    file.write_all(&updated).with_context(|| {
+    file.write_all(updated).with_context(|| {
         format!(
             "writing client configuration; original backup: {}",
             backup.display()
@@ -116,5 +131,5 @@ pub fn rewrite(path: &Path, executable: &Path) -> Result<Value> {
     })?;
     file.set_len(updated.len() as u64)?;
     file.sync_all()?;
-    Ok(json!({"wrapped":wrapped,"skipped":skipped,"backup":backup}))
+    Ok(backup)
 }

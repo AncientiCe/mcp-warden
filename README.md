@@ -2,7 +2,7 @@
 
 `mcp-warden` is a stdio proxy for [MCP](https://modelcontextprotocol.io) servers. It sits in front of a server you already run, relays JSON-RPC in both directions, and cleans tool output before an agent reads it.
 
-Prompt injection is ordinary text, and a filter can always be reworded around. Warden removes content a person would not see, can mark untrusted fields, and can flag suspicious text. With `--enforce`, shared taint gates subsequent sensitive MCP calls, even with detection disabled. It does not confine the agent's built-in tools or the wrapped server. Keep a sandbox and least-privilege credentials as well.
+Prompt injection is ordinary text, and a filter can always be reworded around. Warden removes content a person would not see, can mark untrusted fields, and can flag suspicious text. With `--enforce`, shared taint gates subsequent sensitive MCP calls, even with detection disabled. With the Claude Code hooks (`mcp-warden install claude-code`), it also scans the output of the agent's built-in tools and gates them on the same taint. It still does not sandbox anything. Keep a sandbox and least-privilege credentials as well.
 
 ```jsonc
 // before
@@ -53,6 +53,38 @@ The binary is `target/release/mcp-warden` (`target\release\mcp-warden.exe` on Wi
 
 This crate is not published on crates.io. Use `cargo install --path . --locked` from a checkout, or
 `cargo install --git https://github.com/AncientiCe/mcp-warden --locked` for the published Git revision.
+
+## Protect every tool in Claude Code
+
+```bash
+mcp-warden install claude-code
+```
+
+This registers `mcp-warden hook` once in `~/.claude/settings.json` for every tool, after writing an
+exact backup. Nothing has to be configured per MCP server. Restart Claude Code to load the hooks.
+`mcp-warden uninstall claude-code` removes only warden's entries; `--settings PATH` targets a
+project's `.claude/settings.json` instead.
+
+After each tool call, the hook scans the result, whatever produced it: `gh issue view` or `curl` in
+Bash, WebFetch, WebSearch, Read, or any MCP tool.
+
+- External content (web tools, `gh`/`curl`-style commands, and MCP servers whose names point at
+  public sources such as GitHub, Slack, Sentry, Jira or browsers) taints the session. Hidden text
+  is stripped from what the agent sees.
+- Injection evidence raises taint to SUSPICIOUS or HOSTILE and tells the agent to treat the result
+  as data.
+- Your own files and commands are never rewritten; they only produce a warning for smuggled text
+  or injection attempts. Colored build output and markdown comments stay quiet.
+- `[servers.NAME] default_trust = "trusted"` or `"untrusted"` in `~/.mcp-warden/config.toml`
+  overrides the built-in guess for an MCP server.
+
+Before each tool call, the hook applies the [action policy](#mcp-action-control) to Bash and
+PowerShell commands (judged by their most sensitive part), WebFetch, file writes and MCP tools.
+In a clean session it stays silent and Claude Code's own permission rules decide. Once tainted,
+publishing, outbound requests, piping downloads into a shell, secrets, CI files and agent
+configuration go through Claude Code's permission prompt, even when pre-approved, and are denied
+outright at higher taint. Routine local work (builds, tests, `git status`, edits) continues.
+Review the session, then run `mcp-warden untaint` yourself to clear it.
 
 ## Upgrade a client configuration
 

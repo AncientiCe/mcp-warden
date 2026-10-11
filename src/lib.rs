@@ -5,6 +5,7 @@ pub mod config;
 pub mod detect;
 pub mod extract;
 pub mod hook;
+pub mod install;
 pub mod label;
 pub mod pins;
 pub mod policy;
