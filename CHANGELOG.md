@@ -4,6 +4,8 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-11
+
 ### Changed
 
 - `[egress].allow_hosts` replaces the built-in outbound host exemptions using validated exact
