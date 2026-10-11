@@ -10,7 +10,6 @@ use serde_json::{Map, Value, json};
 use crate::hook::Client;
 use crate::wrap_config::write_with_backup;
 
-const EVENTS: [&str; 2] = ["PreToolUse", "PostToolUse"];
 const TIMEOUT_SECONDS: u64 = 30;
 
 /// The user-wide hook settings of `client`.
@@ -19,6 +18,7 @@ pub fn default_settings(client: Client) -> Result<PathBuf> {
     Ok(match client {
         Client::ClaudeCode => home.join(".claude").join("settings.json"),
         Client::Codex => home.join(".codex").join("hooks.json"),
+        Client::Cursor => home.join(".cursor").join("hooks.json"),
     })
 }
 
@@ -63,26 +63,17 @@ pub fn hook_settings(
     let root = after
         .as_object_mut()
         .context("hook settings must be a JSON object")?;
-    let hooks = root
-        .entry("hooks")
-        .or_insert_with(|| Value::Object(Map::new()))
-        .as_object_mut()
-        .context("settings `hooks` must be an object")?;
-    for event in EVENTS {
-        remove_warden(hooks, event)?;
-        if install {
-            let groups = hooks
-                .entry(event)
-                .or_insert_with(|| Value::Array(Vec::new()))
-                .as_array_mut()
-                .context("hook event entries must be an array")?;
-            groups.push(json!({
-                "matcher": "*",
-                "hooks": [{"type": "command", "command": command, "timeout": TIMEOUT_SECONDS}],
-            }));
-        }
+    if client == Client::Cursor {
+        edit_cursor(root, &command, install)?;
+    } else {
+        edit_grouped(root, &command, install)?;
     }
-    if hooks.is_empty() && before.get("hooks").is_none() {
+    if root
+        .get("hooks")
+        .and_then(Value::as_object)
+        .is_some_and(Map::is_empty)
+        && before.get("hooks").is_none()
+    {
         root.remove("hooks");
     }
     let changed = after != before;
@@ -101,12 +92,76 @@ pub fn hook_settings(
     Ok(json!({ key: changed, "settings": settings, "command": command, "backup": backup }))
 }
 
+fn hooks_object(root: &mut Map<String, Value>) -> Result<&mut Map<String, Value>> {
+    root.entry("hooks")
+        .or_insert_with(|| Value::Object(Map::new()))
+        .as_object_mut()
+        .context("settings `hooks` must be an object")
+}
+
+/// Claude Code and Codex: `hooks.EVENT[] = {matcher, hooks: [{type, command, timeout}]}`.
+fn edit_grouped(root: &mut Map<String, Value>, command: &str, install: bool) -> Result<()> {
+    let hooks = hooks_object(root)?;
+    for event in ["PreToolUse", "PostToolUse"] {
+        let groups = hooks
+            .entry(event)
+            .or_insert_with(|| Value::Array(Vec::new()))
+            .as_array_mut()
+            .context("hook event entries must be an array")?;
+        for group in groups.iter_mut() {
+            if let Some(entries) = group.get_mut("hooks").and_then(Value::as_array_mut) {
+                entries.retain(|hook| !is_warden(hook));
+            }
+        }
+        groups.retain(|group| {
+            group
+                .get("hooks")
+                .and_then(Value::as_array)
+                .is_none_or(|entries| !entries.is_empty())
+        });
+        if install {
+            groups.push(json!({
+                "matcher": "*",
+                "hooks": [{"type": "command", "command": command, "timeout": TIMEOUT_SECONDS}],
+            }));
+        }
+        if groups.is_empty() {
+            hooks.remove(event);
+        }
+    }
+    Ok(())
+}
+
+/// Cursor: `{version: 1, hooks: {event: [{command, matcher?, timeout?}]}}`.
+fn edit_cursor(root: &mut Map<String, Value>, command: &str, install: bool) -> Result<()> {
+    if install {
+        root.entry("version").or_insert(json!(1));
+    }
+    let hooks = hooks_object(root)?;
+    for event in ["preToolUse", "postToolUse"] {
+        let entries = hooks
+            .entry(event)
+            .or_insert_with(|| Value::Array(Vec::new()))
+            .as_array_mut()
+            .context("hook event entries must be an array")?;
+        entries.retain(|hook| !is_warden(hook));
+        if install {
+            entries.push(json!({"command": command, "matcher": "*", "timeout": TIMEOUT_SECONDS}));
+        }
+        if entries.is_empty() {
+            hooks.remove(event);
+        }
+    }
+    Ok(())
+}
+
 /// Quoted, with forward slashes, so it survives both cmd and POSIX shells.
 fn hook_command(executable: &Path, client: Client) -> String {
     let path = executable.to_string_lossy().replace('\\', "/");
     match client {
         Client::ClaudeCode => format!("\"{path}\" hook"),
         Client::Codex => format!("\"{path}\" hook --client codex"),
+        Client::Cursor => format!("\"{path}\" hook --client cursor"),
     }
 }
 
@@ -114,28 +169,4 @@ fn is_warden(hook: &Value) -> bool {
     hook["command"].as_str().is_some_and(|c| {
         c.contains("mcp-warden") && (c.ends_with(" hook") || c.contains(" hook --client "))
     })
-}
-
-fn remove_warden(hooks: &mut Map<String, Value>, event: &str) -> Result<()> {
-    let Some(groups) = hooks.get_mut(event) else {
-        return Ok(());
-    };
-    let groups = groups
-        .as_array_mut()
-        .context("hook event entries must be an array")?;
-    for group in groups.iter_mut() {
-        if let Some(entries) = group.get_mut("hooks").and_then(Value::as_array_mut) {
-            entries.retain(|hook| !is_warden(hook));
-        }
-    }
-    groups.retain(|group| {
-        group
-            .get("hooks")
-            .and_then(Value::as_array)
-            .is_none_or(|entries| !entries.is_empty())
-    });
-    if groups.is_empty() {
-        hooks.remove(event);
-    }
-    Ok(())
 }

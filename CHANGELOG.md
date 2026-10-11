@@ -25,6 +25,10 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
   (`hook --client codex`). Codex cannot substitute cleaned output, so withheld injection and
   smuggled text replace the whole tool result with the quarantine notice. Codex asks once, via
   `/hooks`, to trust a new hook.
+- Cursor support: `mcp-warden install cursor` registers the hook in `~/.cursor/hooks.json`
+  (`hook --client cursor`). Flagged MCP output is replaced; Cursor cannot replace Shell or Read
+  output, so the agent is told to treat a flagged result as data and tell the user. Cursor does
+  not name the server behind an MCP tool, so every MCP result is checked as outside content.
 
 ### Removed
 

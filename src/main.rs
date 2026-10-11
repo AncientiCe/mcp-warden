@@ -107,7 +107,7 @@ struct ClientArgs {
     /// Agent client to configure.
     #[arg(value_enum)]
     client: Client,
-    /// Hook settings file [default: ~/.claude/settings.json or ~/.codex/hooks.json].
+    /// Hook settings file [default: ~/.claude/settings.json, ~/.codex/hooks.json or ~/.cursor/hooks.json].
     #[arg(long)]
     settings: Option<PathBuf>,
 }

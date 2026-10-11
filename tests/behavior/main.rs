@@ -3,6 +3,7 @@
 
 mod codex;
 mod corpus;
+mod cursor;
 mod harness;
 mod hook;
 mod install;
