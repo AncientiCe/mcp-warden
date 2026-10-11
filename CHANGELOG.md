@@ -4,6 +4,17 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Fixed
+
+- Detection now catches overrides written with Cyrillic or Greek look-alike letters, ROT13-encoded
+  instructions, instructions split across markdown table cells or lines, and overrides in French,
+  Spanish, Italian and Portuguese.
+- New `R-AGENTCFG` rule for agent settings that remove confirmation (`auto_approve`,
+  `--dangerously-skip-permissions`, `--full-auto`, approval policy `never`) in outside content.
+- `~/.aws/credentials`, `.netrc`, `.git-credentials`, Docker and kube configs count as secrets, and
+  asking to paste output as a comment on the issue counts as exfiltration.
+- The attack corpus grows to 24 cases; replay catches 23 with no false positives.
+
 ## [0.3.3] - 2026-10-11
 
 ### Fixed

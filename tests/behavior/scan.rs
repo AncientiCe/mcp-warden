@@ -160,7 +160,7 @@ fn replay_measures_the_checked_in_corpora() {
         String::from_utf8_lossy(&output.stderr)
     );
     let report: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(report["malicious"], 18);
+    assert_eq!(report["malicious"], 24);
     assert_eq!(report["benign"], 12);
     assert!(report["recall"].as_f64().unwrap() >= 0.9);
     assert_eq!(report["false_positives"], 0);
