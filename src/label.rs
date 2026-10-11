@@ -133,6 +133,8 @@ impl Walk<'_> {
                         kind: FindingKind::Provenance,
                         count: 1,
                         payload: None,
+                        rule_ids: Vec::new(),
+                        score: None,
                     });
                 }
             }

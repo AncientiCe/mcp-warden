@@ -59,6 +59,9 @@ struct WrapArgs {
 
 #[derive(Args)]
 struct FilterArgs {
+    /// Annotate suspicious instructions and withhold critical fields using local heuristics.
+    #[arg(long)]
+    detect: bool,
     /// Who can write this server's output: `untrusted` applies every rule,
     /// `trusted` only strips invisible characters.
     #[arg(long, value_enum, default_value_t = Trust::Untrusted)]
@@ -70,7 +73,10 @@ struct FilterArgs {
 
 impl FilterArgs {
     fn sanitizer(&self) -> Result<Sanitizer> {
-        let mut policy = Policy::default();
+        let mut policy = Policy {
+            detect: self.detect,
+            ..Policy::default()
+        };
         policy.allowed_image_hosts.extend(
             self.allow_image_hosts
                 .iter()
@@ -82,6 +88,8 @@ impl FilterArgs {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Measure detection against malicious.json and benign.json in a corpus directory.
+    Replay { directory: PathBuf },
     /// Sanitize a file (or stdin) offline: clean text on stdout, findings as JSON lines on stderr.
     Scan {
         /// File to scan; reads stdin when omitted.
@@ -97,6 +105,12 @@ enum Command {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {
+        Some(Command::Replay { directory }) => {
+            mcp_warden::replay::corpus(&directory).and_then(|report| {
+                writeln!(std::io::stdout(), "{report}")?;
+                Ok(ExitCode::SUCCESS)
+            })
+        }
         Some(Command::Scan {
             file,
             filter,

@@ -32,6 +32,17 @@ The supplied map is a starting configuration, not proof that a field or server i
 It leaves Palace untrusted until provenance is available. Tags describe data provenance; they
 are not an authorization boundary.
 
+## Detection and corpus replay
+
+`--detect` enables local heuristic annotations (score ≥0.5) and critical-field withholding
+(score ≥0.9), both on the proxy and on `scan`. It uses Unicode normalization, common letter/number
+substitutions, bounded base64 probes, and weighted rule families. Findings include rule ids and scores;
+audit snippets are limited to 1000 characters. Withheld content is not a recoverable archive.
+
+Run `mcp-warden replay tests/corpus` to measure the combined sanitizer and detector on the bundled
+fixtures. These small, curated corpora are regression checks, not a real-world safety benchmark.
+Detection is optional and cannot establish that a response is safe.
+
 ## Development
 
 See `AGENTS.md` for the rules (TDD behavior tests, quality gates). Run every gate with `make check`, or `pwsh scripts/check.ps1` on Windows.

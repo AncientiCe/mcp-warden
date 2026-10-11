@@ -14,6 +14,13 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ### Added
 
+- Opt-in `--detect` heuristics for the proxy and `scan`: normalized override/role/tool/exfiltration/
+  secret/urgency/memory rules, bounded base64 probes, rule ids and scores in findings, annotations
+  at score 0.5 and field withholding at 0.9. Detection is advisory and does not replace action policy.
+- `mcp-warden replay DIRECTORY` reports precision, recall, false positives and latency for
+  `malicious.json` / `benign.json` corpus files using the sanitizer plus detector.
+- The project is dual-licensed under MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`).
+- `SECURITY.md` states the threat model, what operators should assume, and how to report a vulnerability in private.
 - Opt-in `--label` provenance boundaries for untrusted text and JSON-in-text fields, with escaping
   of forged boundaries. `--config FILE` loads validated TOML trust rules per server/tool/JSON path,
   including wildcard arrays and descendant keys. Explicit untrusted rules take precedence.

@@ -2,9 +2,15 @@
 name = "mcp-warden"
 version = "0.1.0"
 edition = "2024"
+description = "Stdio proxy that sanitizes untrusted MCP server output before an agent reads it."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/AncientiCe/mcp-warden"
+readme = "README.md"
+authors = ["Ionut Constantin Riza <ionut.riza@gmail.com>"]
 
 [dependencies]
 anyhow = "1.0.104"
+base64 = "0.22.1"
 clap = { version = "4.6.7", features = ["derive"] }
 dirs = "7.0.0"
 hex = "0.4.3"
@@ -16,6 +22,7 @@ sha2 = "0.11.0"
 time = { version = "0.3.55", features = ["formatting", "macros"] }
 tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "io-util", "io-std", "process", "sync"] }
 toml = "0.8.23"
+unicode-normalization = "0.1.25"
 which = "8.0.6"
 
 [target.'cfg(windows)'.dependencies]

@@ -2,8 +2,10 @@
 
 pub mod audit;
 pub mod config;
+pub mod detect;
 pub mod extract;
 pub mod label;
 pub mod relay;
+pub mod replay;
 pub mod sanitize;
 pub mod session;
