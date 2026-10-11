@@ -4,6 +4,16 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Added
+
+- `mcp-warden hook` scans every Claude Code tool result regardless of source (Bash, WebFetch,
+  WebSearch, Read, and every MCP tool), so servers do not need wrapping one by one. External
+  content (web tools, `gh`/`curl`-style commands, MCP servers whose names indicate public sources,
+  or servers configured `untrusted`) taints the shared session; hidden text is stripped from what
+  the agent sees and injection evidence raises taint to SUSPICIOUS or HOSTILE with a warning to
+  the agent. Local files and commands are never rewritten and only warn on smuggled text or
+  injection attempts. Findings are written to the audit log.
+
 ### Fixed
 
 - Install scripts retry transient GitHub download and API errors instead of failing on the first

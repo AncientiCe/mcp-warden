@@ -121,6 +121,11 @@ enum Command {
         #[command(flatten)]
         state: StateArgs,
     },
+    /// Claude Code hook: reads one hook event on stdin and scans tool results from any source.
+    Hook {
+        #[command(flatten)]
+        state: StateArgs,
+    },
     /// Measure detection against malicious.json and benign.json in a corpus directory.
     Replay { directory: PathBuf },
     /// Sanitize a file (or stdin) offline: clean text on stdout, findings as JSON lines on stderr.
@@ -148,6 +153,7 @@ fn main() -> ExitCode {
         Some(Command::Status { state }) => state_command(state, None, false),
         Some(Command::Approve { token, state }) => state_command(state, Some(token), false),
         Some(Command::Untaint { state }) => state_command(state, None, true),
+        Some(Command::Hook { state }) => hook(state),
         Some(Command::Replay { directory }) => {
             mcp_warden::replay::corpus(&directory).and_then(|report| {
                 writeln!(std::io::stdout(), "{report}")?;
@@ -241,6 +247,18 @@ fn state_command(args: StateArgs, approval: Option<String>, clear: bool) -> Resu
         Ok(serde_json::to_value(state)?)
     })?;
     writeln!(std::io::stdout(), "{status}")?;
+    Ok(ExitCode::SUCCESS)
+}
+
+fn hook(args: StateArgs) -> Result<ExitCode> {
+    let mut input = Vec::new();
+    std::io::stdin()
+        .read_to_end(&mut input)
+        .context("reading hook input")?;
+    let hook = mcp_warden::hook::Hook::new(mcp_warden::taint::Store::open(args.state_file)?)?;
+    if let Some(output) = hook.handle(&input)? {
+        writeln!(std::io::stdout(), "{output}")?;
+    }
     Ok(ExitCode::SUCCESS)
 }
 

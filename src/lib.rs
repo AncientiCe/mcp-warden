@@ -4,6 +4,7 @@ pub mod audit;
 pub mod config;
 pub mod detect;
 pub mod extract;
+pub mod hook;
 pub mod label;
 pub mod pins;
 pub mod policy;

@@ -3,5 +3,6 @@
 
 mod corpus;
 mod harness;
+mod hook;
 mod proxy;
 mod scan;
