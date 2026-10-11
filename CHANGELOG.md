@@ -4,6 +4,8 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-10-11
+
 ### Added
 
 - The hook regression corpus now holds every live red-team issue that is caught (279, plus two
