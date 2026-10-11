@@ -165,3 +165,72 @@ fn replay_measures_the_checked_in_corpora() {
     assert!(report["recall"].as_f64().unwrap() >= 0.9);
     assert_eq!(report["false_positives"], 0);
 }
+
+#[test]
+fn wrap_backs_up_configuration_and_preserves_server_settings() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("mcp.json");
+    let original = "{\n  \"mcpServers\":{\"github\":{\"command\":\"server.exe\",\"args\":[\"stdio\",\"--read-only\"],\"env\":{\"TOKEN\":\"test-only\"}},\"remote\":{\"url\":\"https://example.com/mcp\"}},\"theme\":\"dark\"\n}\n";
+    std::fs::write(&path, original).unwrap();
+    let output = Command::new(warden_exe())
+        .arg("wrap")
+        .arg(&path)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(report["backup"].as_str().unwrap()).unwrap(),
+        original
+    );
+    let updated = std::fs::read(&path).unwrap();
+    let config: Value = serde_json::from_slice(&updated).unwrap();
+    let server = &config["mcpServers"]["github"];
+    assert_eq!(server["env"]["TOKEN"], "test-only");
+    let args = server["args"].as_array().unwrap();
+    assert!(args.contains(&Value::from("--enforce")));
+    assert!(args.contains(&Value::from("--label")));
+    assert!(args.contains(&Value::from("--detect")));
+    assert_eq!(
+        &args[args.len() - 4..],
+        &[
+            Value::from("--"),
+            Value::from("server.exe"),
+            Value::from("stdio"),
+            Value::from("--read-only")
+        ]
+    );
+    assert_eq!(
+        config["mcpServers"]["remote"]["url"],
+        "https://example.com/mcp"
+    );
+    assert_eq!(config["theme"], "dark");
+    let repeat = Command::new(warden_exe())
+        .arg("wrap")
+        .arg(&path)
+        .output()
+        .unwrap();
+    assert!(repeat.status.success());
+    assert_eq!(std::fs::read(&path).unwrap(), updated);
+    assert!(serde_json::from_slice::<Value>(&repeat.stdout).unwrap()["backup"].is_null());
+}
+
+#[test]
+fn wrap_rejects_invalid_server_args_without_touching_configuration() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("mcp.json");
+    let original = r#"{"servers":{"bad":{"command":"server","args":"--not-an-array"}}}"#;
+    std::fs::write(&path, original).unwrap();
+    let output = Command::new(warden_exe())
+        .arg("wrap")
+        .arg(&path)
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+}

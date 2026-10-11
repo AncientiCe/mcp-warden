@@ -24,7 +24,7 @@ const FINDINGS_EXIT_CODE: u8 = 3;
     name = "mcp-warden",
     version,
     args_conflicts_with_subcommands = true,
-    override_usage = "mcp-warden [OPTIONS] -- <SERVER COMMAND>...\n       mcp-warden scan [OPTIONS] [FILE]"
+    override_usage = "mcp-warden [OPTIONS] -- <SERVER COMMAND>...\n       mcp-warden <COMMAND> [OPTIONS]"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -103,6 +103,8 @@ impl FilterArgs {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Wrap stdio entries in a JSON MCP client config, preserving an exact backup.
+    Wrap { config: PathBuf },
     /// Display current shared taint and pending approvals as JSON.
     Status {
         #[command(flatten)]
@@ -136,6 +138,13 @@ enum Command {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {
+        Some(Command::Wrap { config }) => std::env::current_exe()
+            .map_err(anyhow::Error::from)
+            .and_then(|exe| mcp_warden::wrap_config::rewrite(&config, &exe))
+            .and_then(|report| {
+                writeln!(std::io::stdout(), "{report}")?;
+                Ok(ExitCode::SUCCESS)
+            }),
         Some(Command::Status { state }) => state_command(state, None, false),
         Some(Command::Approve { token, state }) => state_command(state, Some(token), false),
         Some(Command::Untaint { state }) => state_command(state, None, true),

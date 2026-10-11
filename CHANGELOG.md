@@ -14,6 +14,10 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ### Added
 
+- `mcp-warden wrap CONFIG` upgrades stdio entries under `mcpServers` or `servers`, enables labeling,
+  detection, enforcement and tool pinning, preserves original arguments/environment and unrelated
+  settings, and creates an exact backup before writing. Repeated runs are idempotent; invalid entries
+  abort before any changes. Remote URL entries are reported as skipped.
 - `--pin-tools FILE` records first-seen tool definitions and warns/audits subsequent changes without
   silently accepting a new baseline. `--detect` also scans tool descriptions, preserving input schemas.
   Definition changes and detected tool poisoning raise shared taint when enforcement is enabled.

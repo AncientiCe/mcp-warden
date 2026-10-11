@@ -23,13 +23,15 @@ In scope:
 - The wrapped server process tree surviving after warden exits, on Windows.
 - Audit-log handling that writes findings somewhere other than the configured directory, or that disables sanitizing when the log cannot be opened.
 - A known-vulnerable dependency (`cargo audit`).
+- An outbound MCP call bypassing the documented taint policy with `--enforce`, including replayed or mismatched approvals.
+- A changed tool definition failing to produce an alert with `--pin-tools` and an intact previously established baseline.
 
 Out of scope:
 
 - A model that follows instructions which were visible in the tool result. The default pipeline forwards ordinary visible text unchanged.
 - A bypass of `--detect` by rewording. Those rules are a local heuristic. They are off unless you pass the flag, and turning them on does not make the result trusted.
 - Shell, web fetch, file read, and other client tools that never go through this proxy.
-- A compromised `mcp-warden` binary, a compromised wrapped server, or a tampered tool description. Warden does not scan server source or pin `tools/list` descriptions.
+- A compromised `mcp-warden` binary or wrapped server. Warden does not scan server source. Tool pinning is trust on first use, so it cannot attest to the first definition's safety.
 - HTTP and SSE MCP transports. They are not implemented.
 - Denial of service against the model provider.
 
@@ -41,7 +43,8 @@ Out of scope:
 - `--detect` may annotate (score at least 0.5) or withhold (score at least 0.9). Withholding keeps the original text out of the client and stores a truncated copy in the audit finding. A miss means the text is delivered.
 - `--no-audit` turns off the log. It does not turn off sanitizing. When a home directory or `--audit-dir` is set and that directory cannot be opened, warden exits. With no home directory and no `--audit-dir`, it warns and continues without a log.
 - The audit directory (`~/.mcp-warden/audit`, or `$MCP_WARDEN_HOME/audit`, or `--audit-dir`) stores decoded hidden payloads and hashes of full message bodies. Treat it as secret. It is per user, and files older than 30 days are removed at the next startup.
-- Give the wrapped server the least privilege it needs. Warden does not shrink that server's token, and it does not stop a later action in the same client session.
+- Give the wrapped server the least privilege it needs. Warden does not shrink that server's token. `--enforce` gates later MCP calls only when all participating servers share the same state file; built-in tools bypass this boundary.
+- Keep the state, pin files and `approve`/`untaint` CLI under human control. Direct write access to those files or unrestricted terminal execution can bypass the policy. Approval is exact-call, single-use, and expires after ten minutes; taint expires after two hours of inactivity.
 - Pair this proxy with an OS or container sandbox. Warden only sees stdio MCP traffic.
 
 ## Hardening already in the proxy
@@ -52,5 +55,5 @@ These are properties to test against, not a promise that every future change kee
 - Server stderr is passed through, and the server's exit code is propagated.
 - On Windows the server joins a kill-on-close job before it is spawned.
 - At most 4096 client requests are remembered. When the map is full, the oldest entry is dropped. A response for that dropped id is still sanitized and recorded as `unmatched_response`.
-- Listing and `initialize` text is treated as server-authored: invisible characters only.
+- Listing and `initialize` text is treated as server-authored by default. `--detect` also scans tool descriptions, and `--pin-tools` alerts on changed definitions.
 - Binary `data` and `blob` fields are not rewritten.

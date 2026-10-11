@@ -2,7 +2,7 @@
 
 `mcp-warden` is a stdio proxy for [MCP](https://modelcontextprotocol.io) servers. It sits in front of a server you already run, relays JSON-RPC in both directions, and cleans tool output before an agent reads it.
 
-Prompt injection is ordinary text, and a filter can always be reworded around. Warden is one layer in front of the agent: it removes content a person would not see, it can mark untrusted fields, and it can flag suspicious text when you turn that on. It does not confine the agent. Keep a sandbox and least-privilege credentials as well. Session-wide taint and action blocking (stopping a later push, secret read, or egress) are not in this version.
+Prompt injection is ordinary text, and a filter can always be reworded around. Warden removes content a person would not see, can mark untrusted fields, and can flag suspicious text. With `--enforce`, shared taint gates subsequent sensitive MCP calls, even with detection disabled. It does not confine the agent's built-in tools or the wrapped server. Keep a sandbox and least-privilege credentials as well.
 
 ```jsonc
 // before
@@ -25,6 +25,18 @@ cargo build --release --locked
 The binary is `target/release/mcp-warden` (`target\release\mcp-warden.exe` on Windows). Put that directory on `PATH`, or point the MCP client at the full path. Warden resolves the wrapped server through `PATH` / `PATHEXT`, so `npx` works on Windows.
 
 This crate is not published yet. Install from this repository, not from crates.io.
+
+Use `cargo install --path . --locked` from a checkout, or
+`cargo install --git https://github.com/AncientiCe/mcp-warden --locked` for the published Git revision.
+
+## Upgrade a client configuration
+
+`mcp-warden wrap PATH/TO/config.json` wraps stdio entries under `mcpServers` or `servers`,
+enabling labeling, detection, enforcement and tool pinning. It prints an exact backup path and lists
+wrapped/skipped entries. Environment settings and original arguments are preserved. Repeated runs
+leave already-wrapped entries unchanged. Only strict JSON is accepted; JSON with comments requires
+manual configuration. URL entries are left intact. Review the generated configuration and restart
+the MCP client. Restore by copying the reported backup over the configuration with the client stopped.
 
 ## Wrap a server
 
@@ -59,6 +71,9 @@ Everything after `--` is the real server, unchanged. A client config looks like 
 | `--label` | off | Wrap untrusted result text in provenance tags. Off, so benign text stays byte for byte. |
 | `--config FILE` | none | TOML trust map. Requires `--label`. |
 | `--detect` | off | Annotate suspicious untrusted text, and withhold it when the score is high. |
+| `--enforce` | off | Gate outbound MCP calls using shared taint, independent of detection. |
+| `--state-file PATH` | `~/.mcp-warden/state.json` | Shared taint and single-use approvals. |
+| `--pin-tools PATH` | none | Record first-seen tool definitions and warn on changes. |
 | `--audit-dir DIR` | `~/.mcp-warden/audit` | Where rewritten messages are logged. `$MCP_WARDEN_HOME/audit` overrides the default home. |
 | `--no-audit` | off | Skip the audit log. Sanitizing still runs. |
 
@@ -147,7 +162,7 @@ Files older than 30 days are deleted the next time warden starts. The log can co
 - HTTP and SSE transports are not implemented.
 - Marking a server `--trust trusted`, or a field trusted in the config, turns off the untrusted rules for that text.
 - `--detect` and `--label` are optional. The default proxy only strips the hidden-content rules above.
-- Nothing in this version blocks a later tool call because an earlier result was untrusted.
+- Action blocking requires `--enforce` on every participating server; unwrapped and built-in tools bypass it.
 
 ## MCP action control
 

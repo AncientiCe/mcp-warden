@@ -12,3 +12,4 @@ pub mod replay;
 pub mod sanitize;
 pub mod session;
 pub mod taint;
+pub mod wrap_config;
