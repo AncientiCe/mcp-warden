@@ -343,6 +343,33 @@ fn the_agent_cannot_review_or_release_quarantine_itself() {
 }
 
 #[test]
+fn mentioning_the_user_commands_in_text_is_not_blocked() {
+    let home = Home::new();
+    let warden = "mcp-warden";
+    for (tool, input) in [
+        (
+            "mcp__palace__palace_diary_write",
+            json!({"entry": format!("User ran `{warden} show 4c41d977a319` after the demo.")}),
+        ),
+        (
+            "Edit",
+            json!({"file_path": "/work/README.md", "old_string": "a", "new_string": format!("Run `{warden} release ID`.")}),
+        ),
+        (
+            "Bash",
+            json!({"command": format!("git commit -m \"Document {warden} show and trust\"")}),
+        ),
+    ] {
+        silent(&home.hook(&json!({
+            "session_id": "s-1",
+            "hook_event_name": "PreToolUse",
+            "tool_name": tool,
+            "tool_input": input,
+        })));
+    }
+}
+
+#[test]
 fn everything_else_is_left_to_the_client_even_after_a_flag() {
     let home = Home::new();
     hook_output(&home.hook(&web(INJECTION)));

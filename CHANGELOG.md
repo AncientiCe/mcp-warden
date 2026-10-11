@@ -4,6 +4,12 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Fixed
+
+- The hook blocks the agent only from running the user-only commands (show, release, trust,
+  distrust) or reading quarantine paths. Notes, docs, commit messages and other text that merely
+  mention those commands are no longer denied.
+
 ## [0.3.0] - 2026-10-11
 
 ### Changed

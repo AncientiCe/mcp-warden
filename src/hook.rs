@@ -56,8 +56,12 @@ const PUBLIC_SERVERS: &[&str] = &[
 /// Shell commands whose output comes from the network or a public tracker.
 const EXTERNAL_COMMAND: &str = r"(?i)(?:^|[\s;&|(`$])(?:curl|wget|http|https|xh|lynx|w3m|invoke-webrequest|invoke-restmethod|iwr|irm|gh\s+(?:issue|pr|api|search|release|run|gist|repo\s+view|discussion)|glab\s+(?:issue|mr|api))(?:\s|$)";
 
-/// Commands only the user may run: they reveal or release quarantined content.
-const USER_ONLY: &str = r#"(?i)mcp-warden(?:\.exe)?\\?["']?\s+(?:show|release|trust|distrust)\b|\.mcp-warden(?:/|\\)+quarantine"#;
+/// Commands only the user may run, when invoked at the start of a shell
+/// command: they reveal or release quarantined content, or change trust.
+const USER_ONLY_COMMAND: &str = r#"(?i)(?:^|[;&|(\n])\s*&?\s*["']?[^\s"';&|]*mcp-warden(?:\.exe)?["']?\s+(?:show|release|trust|distrust)\b"#;
+
+/// Paths into the quarantine, which only the user's own commands read.
+const QUARANTINE_PATH: &str = r"(?i)\.mcp-warden(?:/|\\)+quarantine";
 
 /// The agent client sending hook events; each has its own output format.
 #[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -85,7 +89,8 @@ pub struct Hook {
     quarantine: Quarantine,
     projects: Projects,
     external_command: Regex,
-    user_only: Regex,
+    user_only_command: Regex,
+    quarantine_path: Regex,
 }
 
 impl Hook {
@@ -96,7 +101,8 @@ impl Hook {
             quarantine: Quarantine::open()?,
             projects: Projects::open()?,
             external_command: Regex::new(EXTERNAL_COMMAND)?,
-            user_only: Regex::new(USER_ONLY)?,
+            user_only_command: Regex::new(USER_ONLY_COMMAND)?,
+            quarantine_path: Regex::new(QUARANTINE_PATH)?,
         })
     }
 
@@ -114,10 +120,17 @@ impl Hook {
     }
 
     /// Stops the agent from reviewing quarantine or changing trust on its own.
+    /// Text that merely mentions the commands (notes, docs, commit messages) is fine.
     fn pre_tool_use(&self, event: &Value) -> Option<Value> {
-        let mut strings = Vec::new();
-        collect_strings(&event["tool_input"], &mut strings);
-        if !strings.iter().any(|s| self.user_only.is_match(s)) {
+        let input = &event["tool_input"];
+        let command = bash_command(event).is_some_and(|c| {
+            self.user_only_command.is_match(c) || self.quarantine_path.is_match(c)
+        });
+        let path = ["file_path", "path", "notebook_path"]
+            .iter()
+            .filter_map(|key| input[key].as_str())
+            .any(|p| self.quarantine_path.is_match(p));
+        if !command && !path {
             return None;
         }
         let reason = "mcp-warden: quarantine and project trust are for the user to manage in their own terminal (`mcp-warden show|release ID`, `mcp-warden trust|distrust DIR`). Ask the user instead.";
@@ -365,15 +378,6 @@ fn bash_command(event: &Value) -> Option<&str> {
     match event["tool_name"].as_str() {
         Some("Bash" | "PowerShell") => event["tool_input"]["command"].as_str(),
         _ => None,
-    }
-}
-
-fn collect_strings<'a>(value: &'a Value, out: &mut Vec<&'a str>) {
-    match value {
-        Value::String(s) => out.push(s),
-        Value::Array(items) => items.iter().for_each(|v| collect_strings(v, out)),
-        Value::Object(map) => map.values().for_each(|v| collect_strings(v, out)),
-        _ => {}
     }
 }
 
