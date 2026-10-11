@@ -1,7 +1,7 @@
 //! Validated per-server and per-field trust configuration.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use regex::Regex;
@@ -21,8 +21,7 @@ struct FileConfig {
 #[serde(deny_unknown_fields)]
 struct ServerConfig {
     default_trust: Option<Trust>,
-    #[serde(default)]
-    fields: Vec<FieldConfig>,
+    fields: Option<Vec<FieldConfig>>,
 }
 
 #[derive(Deserialize)]
@@ -59,17 +58,54 @@ pub struct TrustMap {
 
 impl TrustMap {
     pub fn load(path: Option<&Path>, server: &str) -> Result<Self> {
-        let Some(path) = path else {
-            return Ok(Self::default());
-        };
-        let text = std::fs::read_to_string(path)
-            .with_context(|| format!("reading config {}", path.display()))?;
-        let config: FileConfig = toml::from_str(&text).context("parsing trust configuration")?;
+        let home = std::env::var_os("MCP_WARDEN_HOME")
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("HOME")
+                    .or_else(|| std::env::var_os("USERPROFILE"))
+                    .map(|p| PathBuf::from(p).join(".mcp-warden"))
+            });
+        let mut paths = Vec::new();
+        if let Some(home) = home {
+            paths.push((home.join("config.toml"), false));
+        }
+        paths.push((std::env::current_dir()?.join(".mcp-warden.toml"), false));
+        if let Some(path) = path {
+            paths.push((path.to_path_buf(), true));
+        }
+        let mut result = Self::default();
+        for (path, required) in paths {
+            let text = match std::fs::read_to_string(&path) {
+                Ok(text) => text,
+                Err(err) if !required && err.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(err) => {
+                    return Err(err).with_context(|| format!("reading config {}", path.display()));
+                }
+            };
+            let config: FileConfig = toml::from_str(&text)
+                .with_context(|| format!("parsing trust configuration {}", path.display()))?;
+            let replace_fields = config
+                .servers
+                .get(server)
+                .is_some_and(|s| s.fields.is_some());
+            let next = Self::compile(config, server)
+                .with_context(|| format!("validating config {}", path.display()))?;
+            if next.default_trust.is_some() {
+                result.default_trust = next.default_trust;
+            }
+            if replace_fields {
+                result.fields = next.fields;
+            }
+        }
+        Ok(result)
+    }
+
+    fn compile(config: FileConfig, server: &str) -> Result<Self> {
         let mut maps = BTreeMap::new();
         // Validate every server, so an unused misspelled rule cannot lie dormant.
         for (name, settings) in config.servers {
             let mut fields = Vec::new();
-            for field in settings.fields {
+            for field in settings.fields.unwrap_or_default() {
                 if field.tools.is_empty() {
                     bail!("field trust rule must select at least one tool");
                 }

@@ -4,6 +4,12 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Changed
+
+- Proxy trust configuration now layers global, working-directory, and explicit TOML files.
+  Explicit command-line trust takes precedence, and server defaults work without labeling.
+  Invalid discovered configuration stops startup instead of silently disabling protection.
+
 ### Fixed
 
 - Explicitly untrusted fields taint the session even on otherwise trusted servers, including

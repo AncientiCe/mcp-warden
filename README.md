@@ -69,7 +69,7 @@ Everything after `--` is the real server, unchanged. A client config looks like 
 | `--trust untrusted\|trusted` | `untrusted` | `untrusted` applies every sanitizer rule. `trusted` strips only invisible and control characters. |
 | `--allow-image-host HOST` | GitHub hosts | Extra image host to leave in place. Repeat the flag to add more. A leading `.` matches subdomains. |
 | `--label` | off | Wrap untrusted result text in provenance tags. Off, so benign text stays byte for byte. |
-| `--config FILE` | none | TOML trust map. Requires `--label`. |
+| `--config FILE` | global + project | Additional TOML trust map overriding discovered settings. |
 | `--detect` | off | Annotate suspicious untrusted text, and withhold it when the score is high. |
 | `--enforce` | off | Gate outbound MCP calls using shared taint, independent of detection. |
 | `--state-file PATH` | `~/.mcp-warden/state.json` | Shared taint and single-use approvals. |
@@ -120,6 +120,16 @@ JSON returned as text is parsed and cleaned per string. The message is re-serial
 Tag characters in the text are escaped, so a payload cannot forge the closing boundary. Labels describe where the text came from. They are not an authorization check.
 
 `--config` loads a TOML file. `examples/trust.toml` is a starting map, not a statement that any server or field is safe. Read it before you use it: the `impact` block is `trusted` except for a few outsider-controlled fields, which is only appropriate when you control that server. Unknown server ids stay untrusted. Unknown keys and unsupported paths fail at startup.
+
+The proxy reads `~/.mcp-warden/config.toml` (or `$MCP_WARDEN_HOME/config.toml`), then
+`.mcp-warden.toml` in its working directory, then an explicit `--config` file. Later files
+override a server's supplied `default_trust` and replace its supplied `fields` array; omitted
+settings are inherited. An explicit `--trust` overrides the configured server default.
+Only missing automatically discovered files are ignored. Invalid or unreadable files stop
+startup, including invalid rules for other servers. Treat project configuration as security
+policy: review it before starting a client in a downloaded repository. Field labeling still
+requires `--label`; server default trust applies even without labeling. Offline `scan` uses
+its command-line options and does not discover these files.
 
 Rules select tools by exact name. `"*"` selects every tool. Paths support `$`, dotted keys, numeric indexes, `[*]`, and descendant keys such as `$..body`. An explicit untrusted path wins over a trusted path on the same field.
 

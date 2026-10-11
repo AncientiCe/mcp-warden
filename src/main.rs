@@ -46,8 +46,8 @@ struct WrapArgs {
     /// Add provenance boundaries around untrusted result text.
     #[arg(long)]
     label: bool,
-    /// TOML trust map, applied when labeling is enabled.
-    #[arg(long, requires = "label")]
+    /// TOML trust map overriding global and project settings.
+    #[arg(long)]
     config: Option<PathBuf>,
     /// Name of the wrapped server, used in logs and the audit log.
     #[arg(long, default_value = "server")]
@@ -79,8 +79,8 @@ struct FilterArgs {
     detect: bool,
     /// Who can write this server's output: `untrusted` applies every rule,
     /// `trusted` only strips invisible characters.
-    #[arg(long, value_enum, default_value_t = Trust::Untrusted)]
-    trust: Trust,
+    #[arg(long, value_enum)]
+    trust: Option<Trust>,
     /// Extra image host to leave alone (a leading `.` matches subdomains). Repeatable.
     #[arg(long = "allow-image-host", value_name = "HOST")]
     allow_image_hosts: Vec<String>,
@@ -191,7 +191,11 @@ fn wrap(args: WrapArgs) -> Result<ExitCode> {
         }
     };
     let map = mcp_warden::config::TrustMap::load(args.config.as_deref(), &args.server_id)?;
-    let trust = map.default_trust.unwrap_or(args.filter.trust);
+    let trust = args
+        .filter
+        .trust
+        .or(map.default_trust)
+        .unwrap_or(Trust::Untrusted);
     let gate = if args.enforce {
         Some(mcp_warden::policy::Gate {
             store: mcp_warden::taint::Store::open(args.state.state_file)?,
@@ -245,7 +249,12 @@ fn scan(file: Option<PathBuf>, filter: &FilterArgs, fail_on_findings: bool) -> R
     let text = String::from_utf8(input).context("input is not UTF-8")?;
     let sanitizer = filter.sanitizer()?;
     let mut findings = Vec::new();
-    let clean = sanitize_string(&sanitizer, &text, filter.trust, &mut findings);
+    let clean = sanitize_string(
+        &sanitizer,
+        &text,
+        filter.trust.unwrap_or(Trust::Untrusted),
+        &mut findings,
+    );
 
     std::io::stdout().write_all(clean.as_deref().unwrap_or(&text).as_bytes())?;
     let mut stderr = std::io::stderr().lock();

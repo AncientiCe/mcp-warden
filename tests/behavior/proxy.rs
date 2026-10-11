@@ -859,3 +859,64 @@ dynamic_trust = { field = "$.author_association", trusted_values = ["MEMBER"], e
     let reply = s.call_tool(2, "create_issue", json!({"body":"outbound"}));
     assert!(reply["result"]["_meta"]["mcp-warden/approval_token"].is_string());
 }
+
+#[test]
+fn trust_configuration_layers_and_explicit_cli_precedence() {
+    use crate::harness::{fake_server_exe, warden_exe};
+    let dir = tempfile::TempDir::new().unwrap();
+    let home = dir.path().join("home");
+    let project = dir.path().join("project");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(
+        home.join("config.toml"),
+        "[servers.fake]\ndefault_trust = 'trusted'\n",
+    )
+    .unwrap();
+    let run = |extra: &[&str]| {
+        let mut cmd = std::process::Command::new(warden_exe());
+        cmd.current_dir(&project)
+            .env("MCP_WARDEN_HOME", &home)
+            .args(["--server-id", "fake", "--no-audit"])
+            .args(extra)
+            .arg("--")
+            .arg(fake_server_exe());
+        let mut s = Session::spawn(cmd, tempfile::TempDir::new().unwrap());
+        let text = s.call_tool_text(1, "echo", json!({"text":"<!-- hidden -->visible"}));
+        assert!(s.finish().0.success());
+        text
+    };
+    assert_eq!(run(&[]), "<!-- hidden -->visible");
+    std::fs::write(
+        project.join(".mcp-warden.toml"),
+        "[servers.fake]\ndefault_trust = 'untrusted'\n",
+    )
+    .unwrap();
+    assert_eq!(run(&[]), "visible");
+    let explicit = dir.path().join("explicit.toml");
+    std::fs::write(&explicit, "[servers.fake]\ndefault_trust = 'trusted'\n").unwrap();
+    assert_eq!(
+        run(&["--config", explicit.to_str().unwrap()]),
+        "<!-- hidden -->visible"
+    );
+    assert_eq!(
+        run(&[
+            "--config",
+            explicit.to_str().unwrap(),
+            "--trust",
+            "untrusted"
+        ]),
+        "visible"
+    );
+    std::fs::write(project.join(".mcp-warden.toml"), "unknown_setting = true").unwrap();
+    let output = std::process::Command::new(warden_exe())
+        .current_dir(&project)
+        .env("MCP_WARDEN_HOME", &home)
+        .args(["--no-audit", "--"])
+        .arg(fake_server_exe())
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("unknown field"));
+}
