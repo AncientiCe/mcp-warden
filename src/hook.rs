@@ -9,6 +9,7 @@ use crate::audit::{self, Audit, Entry};
 use crate::config::TrustMap;
 use crate::detect::Detector;
 use crate::extract::sanitize_json;
+use crate::policy::{Gate, Permission, default_egress_hosts};
 use crate::sanitize::{Finding, FindingKind, Policy, Sanitizer, Trust};
 use crate::taint::{Level, Store};
 
@@ -61,7 +62,7 @@ const SMUGGLING: &[FindingKind] = &[
 ];
 
 pub struct Hook {
-    store: Store,
+    gate: Gate,
     audit: Option<Audit>,
     sanitizer: Sanitizer,
     local: Sanitizer,
@@ -72,8 +73,14 @@ pub struct Hook {
 impl Hook {
     pub fn new(store: Store) -> Result<Self> {
         let audit = Audit::default_dir().and_then(|dir| Audit::open(dir).ok());
+        let allowed_hosts = TrustMap::load(None, "claude-code")?
+            .allowed_egress_hosts
+            .unwrap_or_else(default_egress_hosts);
         Ok(Self {
-            store,
+            gate: Gate {
+                store,
+                allowed_hosts,
+            },
             audit,
             sanitizer: Sanitizer::new(Policy {
                 detect: true,
@@ -91,6 +98,7 @@ impl Hook {
         let event: Value = serde_json::from_slice(input).context("hook input is not JSON")?;
         match event["hook_event_name"].as_str() {
             Some("PostToolUse") => self.post_tool_use(&event),
+            Some("PreToolUse") => self.pre_tool_use(&event),
             _ => Ok(None),
         }
     }
@@ -123,7 +131,7 @@ impl Hook {
             (true, _) => Some(Level::Tainted),
         };
         if let Some(level) = level {
-            self.store.observe(level, &format!("hook:{tool}"))?;
+            self.gate.store.observe(level, &format!("hook:{tool}"))?;
         }
         if findings.is_empty() {
             return Ok(None);
@@ -143,6 +151,22 @@ impl Hook {
             output["updatedToolOutput"] = response;
         }
         Ok(Some(json!({ "hookSpecificOutput": output })))
+    }
+
+    fn pre_tool_use(&self, event: &Value) -> Result<Option<Value>> {
+        let tool = event["tool_name"].as_str().unwrap_or("");
+        let (decision, reason) = match self.gate.check_agent_tool(tool, &event["tool_input"])? {
+            Permission::Allow => return Ok(None),
+            Permission::Ask(reason) => ("ask", reason),
+            Permission::Deny(reason) => ("deny", reason),
+        };
+        Ok(Some(json!({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": decision,
+                "permissionDecisionReason": reason,
+            }
+        })))
     }
 
     /// The user's own files and commands: report smuggled text and injection

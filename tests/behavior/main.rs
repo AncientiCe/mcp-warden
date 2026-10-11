@@ -4,5 +4,6 @@
 mod corpus;
 mod harness;
 mod hook;
+mod hook_policy;
 mod proxy;
 mod scan;

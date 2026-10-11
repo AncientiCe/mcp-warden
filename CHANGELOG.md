@@ -13,6 +13,12 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
   the agent sees and injection evidence raises taint to SUSPICIOUS or HOSTILE with a warning to
   the agent. Local files and commands are never rewritten and only warn on smuggled text or
   injection attempts. Findings are written to the audit log.
+- `mcp-warden hook` also gates the agent's own tool calls (PreToolUse) on shared taint: Bash and
+  PowerShell commands are classified by their most sensitive part (publishing, network egress,
+  piping downloads into a shell, secrets, destructive commands, agent configuration and warden's
+  own state), as are WebFetch, file writes and MCP tools. Confirmation uses Claude Code's own
+  permission prompt, even for pre-approved commands; clean sessions and routine local work stay
+  silent.
 
 ### Fixed
 
