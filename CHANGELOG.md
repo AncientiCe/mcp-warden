@@ -4,6 +4,8 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-11
+
 ### Changed
 
 - The Claude Code hook quarantines instead of tainting. Outside content that looks like prompt
