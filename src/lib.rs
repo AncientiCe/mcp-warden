@@ -9,6 +9,7 @@ pub mod install;
 pub mod label;
 pub mod pins;
 pub mod policy;
+pub mod quarantine;
 pub mod relay;
 pub mod replay;
 pub mod sanitize;

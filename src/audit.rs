@@ -44,11 +44,7 @@ impl Audit {
 
     /// `$MCP_WARDEN_HOME/audit`, defaulting to `~/.mcp-warden/audit`.
     pub fn default_dir() -> Option<PathBuf> {
-        let home = match std::env::var_os("MCP_WARDEN_HOME") {
-            Some(dir) => PathBuf::from(dir),
-            None => dirs::home_dir()?.join(".mcp-warden"),
-        };
-        Some(home.join("audit"))
+        Some(warden_home()?.join("audit"))
     }
 
     pub fn record(&self, entry: &Entry) -> io::Result<()> {
@@ -69,6 +65,14 @@ impl Audit {
             Some((_, file)) => writeln!(file, "{line}"),
             None => Err(io::Error::other("audit log file not open")),
         }
+    }
+}
+
+/// `$MCP_WARDEN_HOME`, defaulting to `~/.mcp-warden`.
+pub fn warden_home() -> Option<PathBuf> {
+    match std::env::var_os("MCP_WARDEN_HOME") {
+        Some(dir) => Some(PathBuf::from(dir)),
+        None => Some(dirs::home_dir()?.join(".mcp-warden")),
     }
 }
 

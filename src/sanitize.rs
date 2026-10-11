@@ -6,6 +6,7 @@
 //! because they would mangle legitimate content from the user's own tools.
 
 use std::borrow::Cow;
+use std::sync::Mutex;
 
 use regex::{Captures, Regex};
 use serde::Serialize;
@@ -105,6 +106,11 @@ impl Finding {
 #[derive(Debug, Clone)]
 pub struct Policy {
     pub detect: bool,
+    /// Quarantine id: withhold every string that looks like prompt injection
+    /// (hidden text alone is stripped, not withheld) instead of annotating it.
+    pub quarantine: Option<String>,
+    /// SHA-256 of strings the user released from quarantine; never withheld again.
+    pub released: Vec<String>,
     /// Image hosts that are left alone. A leading `.` matches any subdomain.
     pub allowed_image_hosts: Vec<String>,
 }
@@ -119,6 +125,8 @@ impl Default for Policy {
         ];
         Self {
             detect: false,
+            quarantine: None,
+            released: Vec::new(),
             allowed_image_hosts: hosts.iter().map(|h| h.to_string()).collect(),
         }
     }
@@ -138,6 +146,8 @@ impl Policy {
 /// The Layer 1 rule set, compiled once at startup.
 pub struct Sanitizer {
     detector: Option<crate::detect::Detector>,
+    /// Original text of every string withheld in quarantine mode.
+    withheld: Mutex<Vec<String>>,
     policy: Policy,
     ansi: Regex,
     html_comment: Regex,
@@ -152,12 +162,21 @@ impl Sanitizer {
     pub fn detection_enabled(&self) -> bool {
         self.detector.is_some()
     }
+
+    /// Strings withheld since the last call, in order.
+    pub fn take_withheld(&self) -> Vec<String> {
+        self.withheld
+            .lock()
+            .map(|mut withheld| std::mem::take(&mut *withheld))
+            .unwrap_or_default()
+    }
     pub fn new(policy: Policy) -> Result<Self, regex::Error> {
         Ok(Self {
             detector: policy
                 .detect
                 .then(crate::detect::Detector::new)
                 .transpose()?,
+            withheld: Mutex::new(Vec::new()),
             policy,
             ansi: Regex::new(
                 r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b[@-Z\\-_]|\x{9b}[0-?]*[ -/]*[@-~]",
@@ -210,10 +229,25 @@ impl Sanitizer {
                         .collect::<Vec<_>>()
                         .join("\n")
                 );
-                let verdict = detector.evaluate(&evidence, hidden);
-                if verdict.score >= 0.5 {
+                let quarantine = self.policy.quarantine.as_deref();
+                // In quarantine mode hidden text is already stripped, so only
+                // instruction-like content justifies withholding a field.
+                let verdict = detector.evaluate(&evidence, hidden && quarantine.is_none());
+                let released = quarantine.is_some()
+                    && self
+                        .policy
+                        .released
+                        .contains(&hex::encode(Sha256::digest(input.as_bytes())));
+                if verdict.score >= 0.5 && !released {
                     let rules = verdict.rule_ids.join(", ");
-                    let rewritten = if verdict.score >= 0.9 {
+                    let rewritten = if let Some(id) = quarantine {
+                        if let Ok(mut withheld) = self.withheld.lock() {
+                            withheld.push(input.to_string());
+                        }
+                        format!(
+                            "[mcp-warden: withheld as possible prompt injection; quarantine {id}; rules: {rules}]"
+                        )
+                    } else if verdict.score >= 0.9 {
                         format!(
                             "[mcp-warden: content withheld; rules: {rules}; score: {:.2}]",
                             verdict.score

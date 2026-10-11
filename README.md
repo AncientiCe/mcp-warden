@@ -65,26 +65,24 @@ exact backup. Nothing has to be configured per MCP server. Restart Claude Code t
 `mcp-warden uninstall claude-code` removes only warden's entries; `--settings PATH` targets a
 project's `.claude/settings.json` instead.
 
-After each tool call, the hook scans the result, whatever produced it: `gh issue view` or `curl` in
-Bash, WebFetch, WebSearch, Read, or any MCP tool.
+After each tool call, the hook checks the result, whatever produced it: `gh issue view` or `curl`
+in Bash, WebFetch, WebSearch, or any MCP tool. Nothing else changes: there is no session taint and
+no extra permission prompts.
 
-- External content (web tools, `gh`/`curl`-style commands, and MCP servers whose names point at
-  public sources such as GitHub, Slack, Sentry, Jira or browsers) taints the session. Hidden text
-  is stripped from what the agent sees.
-- Injection evidence raises taint to SUSPICIOUS or HOSTILE and tells the agent to treat the result
-  as data.
-- Your own files and commands are never rewritten; they only produce a warning for smuggled text
-  or injection attempts. Colored build output and markdown comments stay quiet.
+- Your own project is left alone. Files, builds, tests and local commands are never flagged, even
+  when they contain injection examples.
+- Outside content (web tools, `gh`/`curl`-style commands, and MCP servers whose names point at
+  public sources such as GitHub, Slack, Sentry, Jira or browsers) is checked per field. Clean
+  content passes through untouched.
+- Hidden text (invisible characters, HTML comments, off-host images) is stripped from what the
+  agent sees; the agent is told what kind of content was removed, never the text itself.
+- A field that looks like prompt injection is withheld and quarantined. The agent sees only a
+  notice with a quarantine id and is told to tell you. The rest of the item (for example an
+  issue's title) still comes through.
+- `mcp-warden show ID` prints withheld content for you to review; `mcp-warden release ID` lets the
+  agent see it the next time it reads it. The agent cannot run these or read the quarantine itself.
 - `[servers.NAME] default_trust = "trusted"` or `"untrusted"` in `~/.mcp-warden/config.toml`
   overrides the built-in guess for an MCP server.
-
-Before each tool call, the hook applies the [action policy](#mcp-action-control) to Bash and
-PowerShell commands (judged by their most sensitive part), WebFetch, file writes and MCP tools.
-In a clean session it stays silent and Claude Code's own permission rules decide. Once tainted,
-publishing, outbound requests, piping downloads into a shell, secrets, CI files and agent
-configuration go through Claude Code's permission prompt, even when pre-approved, and are denied
-outright at higher taint. Routine local work (builds, tests, `git status`, edits) continues.
-Review the session, then run `mcp-warden untaint` yourself to clear it.
 
 ## Upgrade a client configuration
 

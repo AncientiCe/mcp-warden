@@ -4,6 +4,24 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Changed
+
+- The Claude Code hook quarantines instead of tainting. Outside content that looks like prompt
+  injection is withheld per field and stored for review; the agent is told to report it to the
+  user. The user's own project (files, builds, tests, local commands) is never flagged, and the
+  hook no longer raises session taint or asks for permission on the agent's actions.
+- The agent is never shown hidden text the hook removed, only what kind of content it was.
+
+### Added
+
+- `mcp-warden show ID` prints quarantined content; `mcp-warden release ID` lets the agent see it.
+  The hook denies the agent running either command or reading the quarantine directory.
+
+### Removed
+
+- Taint-based permission prompts from the Claude Code hook (`PreToolUse`), which flagged the
+  user's own projects.
+
 ## [0.2.0] - 2026-10-11
 
 ### Added

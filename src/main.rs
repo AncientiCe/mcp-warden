@@ -146,11 +146,12 @@ enum Command {
         #[command(flatten)]
         target: ClientArgs,
     },
-    /// Claude Code hook: reads one hook event on stdin and scans tool results from any source.
-    Hook {
-        #[command(flatten)]
-        state: StateArgs,
-    },
+    /// Claude Code hook: reads one hook event on stdin and checks tool results from any source.
+    Hook,
+    /// Show content the hook withheld from the agent (for you, not the agent).
+    Show { id: String },
+    /// Let the agent see withheld content after you reviewed it.
+    Release { id: String },
     /// Measure detection against malicious.json and benign.json in a corpus directory.
     Replay { directory: PathBuf },
     /// Sanitize a file (or stdin) offline: clean text on stdout, findings as JSON lines on stderr.
@@ -178,7 +179,9 @@ fn main() -> ExitCode {
         Some(Command::Status { state }) => state_command(state, None, false),
         Some(Command::Approve { token, state }) => state_command(state, Some(token), false),
         Some(Command::Untaint { state }) => state_command(state, None, true),
-        Some(Command::Hook { state }) => hook(state),
+        Some(Command::Hook) => hook(),
+        Some(Command::Show { id }) => show(&id, false),
+        Some(Command::Release { id }) => show(&id, true),
         Some(Command::Install { target }) => install(target, true),
         Some(Command::Uninstall { target }) => install(target, false),
         Some(Command::Replay { directory }) => {
@@ -289,14 +292,37 @@ fn install(target: ClientArgs, install: bool) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn hook(args: StateArgs) -> Result<ExitCode> {
+fn hook() -> Result<ExitCode> {
     let mut input = Vec::new();
     std::io::stdin()
         .read_to_end(&mut input)
         .context("reading hook input")?;
-    let hook = mcp_warden::hook::Hook::new(mcp_warden::taint::Store::open(args.state_file)?)?;
-    if let Some(output) = hook.handle(&input)? {
+    if let Some(output) = mcp_warden::hook::Hook::new()?.handle(&input)? {
         writeln!(std::io::stdout(), "{output}")?;
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+fn show(id: &str, release: bool) -> Result<ExitCode> {
+    let quarantine = mcp_warden::quarantine::Quarantine::open()?;
+    let record = if release {
+        quarantine.release(id)?
+    } else {
+        quarantine.load(id)?
+    };
+    let mut out = std::io::stdout().lock();
+    writeln!(out, "quarantine {} ({})", record.id, record.ts)?;
+    writeln!(out, "tool: {}", record.tool)?;
+    writeln!(out, "input: {}", record.input)?;
+    writeln!(out, "rules: {}", record.rules.join(", "))?;
+    for (n, text) in record.withheld.iter().enumerate() {
+        writeln!(out, "--- withheld {} ---\n{text}", n + 1)?;
+    }
+    if release {
+        writeln!(
+            out,
+            "--- released: the agent will see this content when it reads it again ---"
+        )?;
     }
     Ok(ExitCode::SUCCESS)
 }
