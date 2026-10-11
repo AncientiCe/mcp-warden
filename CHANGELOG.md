@@ -4,6 +4,12 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Changed
+
+- The quarantine notice asks the agent to suggest closing a flagged issue or pull request as a
+  suspected prompt injection once the user has reviewed it, and never to reply or close without
+  the user's go-ahead.
+
 ## [0.3.1] - 2026-10-11
 
 ### Fixed

@@ -158,6 +158,11 @@ fn injection_in_outside_content_is_withheld_and_quarantined() {
     assert!(context.contains("WebFetch"), "{context}");
     assert!(context.contains("R-OVERRIDE"), "{context}");
     assert!(context.contains("tell the user"), "{context}");
+    assert!(
+        context.contains("suggest closing it as a suspected prompt injection"),
+        "{context}"
+    );
+    assert!(context.contains("user's go-ahead"), "{context}");
     let id = quarantine_id(context);
     assert!(seen.contains(&id), "{seen}");
     assert!(
