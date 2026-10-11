@@ -4,6 +4,8 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-10-11
+
 ### Fixed
 
 - Encoded and enciphered instructions are decoded before detection: hex, base32, base64 nested
