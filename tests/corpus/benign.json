@@ -1,0 +1,62 @@
+[
+  {
+    "id": "B01",
+    "description": "issue with code block and indentation",
+    "text": "Steps:\n\n```rust\nfn main() {\n        println!(\"hi\");\n}\n```\n\nExpected: no panic."
+  },
+  {
+    "id": "B02",
+    "description": "emoji ZWJ sequences, presentation selectors and keycaps",
+    "text": "Family \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67 love \u2764\ufe0f fire \u2764\ufe0f\u200d\ud83d\udd25 step 1\ufe0f\u20e3"
+  },
+  {
+    "id": "B03",
+    "description": "Persian with ZWNJ",
+    "text": "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645 \u0627\u06cc\u0646 \u0631\u0627 \u062f\u0631\u0633\u062a \u06a9\u0646\u0645"
+  },
+  {
+    "id": "B04",
+    "description": "Hindi with ZWJ/ZWNJ",
+    "text": "\u0915\u094d\u200d\u0937 \u0915\u094d\u200c\u0937"
+  },
+  {
+    "id": "B05",
+    "description": "GitHub-hosted screenshots",
+    "text": "Screenshot: ![image](https://github.com/user-attachments/assets/1f0c-77.png) and <img src=\"https://user-images.githubusercontent.com/1/2.png\" width=\"400\">"
+  },
+  {
+    "id": "B06",
+    "description": "relative image and links with query strings",
+    "text": "![diagram](docs/arch.png) see [the docs](https://example.com/search?q=mcp&page=2)"
+  },
+  {
+    "id": "B07",
+    "description": "commit SHAs and short hex",
+    "text": "Regressed in 3f2a9c1d8e7b6a5f4e3d2c1b0a9f8e7d6c5b4a39 (was fine in 1a2b3c4)."
+  },
+  {
+    "id": "B08",
+    "description": "markdown separators and tables",
+    "text": "Title\n----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n| a | b |\n|---|---|\n| 1 | 2 |"
+  },
+  {
+    "id": "B09",
+    "description": "stack trace with paths",
+    "text": "thread 'main' panicked at src/relay.rs:42:9:\ncalled `Result::unwrap()` on an `Err` value: Os { code: 32, kind: BrokenPipe }\nnote: run with `RUST_BACKTRACE=1`"
+  },
+  {
+    "id": "B10",
+    "description": "CJK ideographic variation sequence",
+    "text": "\u845b\udb40\udd00\u57ce\u5e02"
+  },
+  {
+    "id": "B11",
+    "description": "windows path and CRLF",
+    "text": "Path C:\\Users\\dev\\project\\src\\main.rs\r\nfails on build\r\n"
+  },
+  {
+    "id": "B12",
+    "description": "a few blank lines",
+    "text": "para one\n\n\n\npara two"
+  }
+]

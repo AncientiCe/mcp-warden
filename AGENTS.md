@@ -14,7 +14,7 @@ When working on this codebase, follow these rules on every task. They bind every
 Do not implement behavior without a failing test that defines it.
 
 **"Behavioral" means exercising `mcp-warden` from the outside:**
-- **the proxy:** run the `mcp-warden` binary in front of the test-double server `mcp-warden-fake-server`, speak MCP JSON-RPC to it over stdio, and assert on the bytes the client actually receives, the exit code, and the audit log written to disk;
+- **the proxy:** run the `mcp-warden` binary in front of the test-double server `examples/fake_server.rs`, speak MCP JSON-RPC to it over stdio, and assert on the bytes the client actually receives, the exit code, and the audit log written to disk;
 - **the CLI:** run `mcp-warden scan`, for example with `assert_cmd`, and assert on its stdout, stderr and exit code;
 - **the corpora:** checked-in attack and benign fixtures under `tests/corpus/`, each with hand-verified expected findings, run through the binary.
 
@@ -81,7 +81,7 @@ Fix any failure before marking the task complete.
 ## 6. No Mocks
 
 - **Do not use mocks** in tests (mock objects, mock servers, mock crates).
-- Prefer **real implementations** and real fixtures. Where a real dependency genuinely can't be used, use an explicit, minimal test double. `mcp-warden-fake-server` is the one double for MCP servers: it speaks real JSON-RPC over real stdio and returns scripted payloads.
+- Prefer **real implementations** and real fixtures. Where a real dependency genuinely can't be used, use an explicit, minimal test double. `examples/fake_server.rs` is the one double for MCP servers: it speaks real JSON-RPC over real stdio and returns scripted payloads.
 - Before a phase's exit criteria count as met, also verify against real servers (for example GitHub MCP) as the roadmap says.
 
 ---
@@ -148,7 +148,7 @@ A change (a phase increment, a bug fix, anything) is done only when **all** of:
 | No plan files | Plans live in Palace (wing `mcp_warden`); only real documentation in the repo |
 | Proxy discipline | Stdout = protocol only; unchanged = byte-identical; never drop messages; mirror the child |
 | No dead code | No unused variables, dead code, or `#[allow(dead_code)]` |
-| No mocks | Real implementations, fixtures, or the explicit `mcp-warden-fake-server` double |
+| No mocks | Real implementations, fixtures, or the explicit `examples/fake_server.rs` double |
 | No placeholders | No `todo!()`/`unimplemented!()`/stubs |
 | No unsafe unwrap/expect | Never in production code |
 | Close running instances | Stop any verification processes when done |
