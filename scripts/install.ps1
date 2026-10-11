@@ -21,6 +21,21 @@ function Get-Target {
     }
 }
 
+# GitHub occasionally answers with transient 5xx errors; retry before giving up.
+function Invoke-WithRetry([scriptblock]$Action) {
+    $attempt = 1
+    while ($true) {
+        try {
+            return & $Action
+        } catch {
+            if ($attempt -ge 5) { throw }
+            Write-Host "Request failed ($($_.Exception.Message)); retrying ($attempt/4)..."
+            Start-Sleep -Seconds (2 * $attempt)
+            $attempt++
+        }
+    }
+}
+
 try {
     $Target = Get-Target
 
@@ -36,15 +51,15 @@ try {
         if ($VersionOverride) {
             $Tag = $VersionOverride
         } else {
-            $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest"
+            $Release = Invoke-WithRetry { Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" }
             $Tag = $Release.tag_name
         }
         $Version = $Tag.TrimStart("v")
         $Asset = "mcp-warden-$Version-$Target.zip"
         $Archive = Join-Path $TempDir $Asset
         $Checksum = Join-Path $TempDir "mcp-warden-$Target.sha256"
-        Invoke-WebRequest -Uri "https://github.com/$Repo/releases/download/$Tag/$Asset" -OutFile $Archive
-        Invoke-WebRequest -Uri "https://github.com/$Repo/releases/download/$Tag/mcp-warden-$Target.sha256" -OutFile $Checksum
+        Invoke-WithRetry { Invoke-WebRequest -Uri "https://github.com/$Repo/releases/download/$Tag/$Asset" -OutFile $Archive }
+        Invoke-WithRetry { Invoke-WebRequest -Uri "https://github.com/$Repo/releases/download/$Tag/mcp-warden-$Target.sha256" -OutFile $Checksum }
 
         $Expected = ((Get-Content $Checksum | Select-Object -First 1) -split "\s+")[0]
         $Actual = (Get-FileHash -Algorithm SHA256 $Archive).Hash.ToLowerInvariant()

@@ -51,7 +51,7 @@ else
   if [ -n "$version_override" ]; then
     tag="$version_override"
   else
-    tag="$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)"
+    tag="$(curl -fsSL --retry 4 "https://api.github.com/repos/$repo/releases/latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)"
   fi
   if [ -z "$tag" ]; then
     echo "Could not determine the latest mcp-warden release; set MCP_WARDEN_VERSION" >&2
@@ -61,8 +61,8 @@ else
   asset="mcp-warden-$version-$target.tar.gz"
   archive="$tmp_dir/$asset"
   checksum="$tmp_dir/mcp-warden-$target.sha256"
-  curl -fL "https://github.com/$repo/releases/download/$tag/$asset" -o "$archive"
-  curl -fL "https://github.com/$repo/releases/download/$tag/mcp-warden-$target.sha256" -o "$checksum"
+  curl -fL --retry 4 "https://github.com/$repo/releases/download/$tag/$asset" -o "$archive"
+  curl -fL --retry 4 "https://github.com/$repo/releases/download/$tag/mcp-warden-$target.sha256" -o "$checksum"
   checksum_verify "$archive" "$checksum"
 fi
 

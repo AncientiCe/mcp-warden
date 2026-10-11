@@ -4,6 +4,11 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Fixed
+
+- Install scripts retry transient GitHub download and API errors instead of failing on the first
+  5xx response.
+
 ## [0.1.0] - 2026-10-11
 
 ### Changed
