@@ -6,6 +6,9 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ### Changed
 
+- `[egress].allow_hosts` replaces the built-in outbound host exemptions using validated exact
+  host names. Subdomains and credential-bearing URLs do not inherit an exemption.
+
 - Proxy trust configuration now layers global, working-directory, and explicit TOML files.
   Explicit command-line trust takes precedence, and server defaults work without labeling.
   Invalid discovered configuration stops startup instead of silently disabling protection.

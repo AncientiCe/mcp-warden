@@ -15,6 +15,13 @@ use crate::sanitize::Trust;
 struct FileConfig {
     #[serde(default)]
     servers: BTreeMap<String, ServerConfig>,
+    egress: Option<EgressConfig>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EgressConfig {
+    allow_hosts: Vec<String>,
 }
 
 #[derive(Default, Deserialize)]
@@ -53,6 +60,7 @@ pub struct FieldRule {
 #[derive(Default)]
 pub struct TrustMap {
     pub default_trust: Option<Trust>,
+    pub allowed_egress_hosts: Option<Vec<String>>,
     fields: Vec<FieldRule>,
 }
 
@@ -97,6 +105,9 @@ impl TrustMap {
             if next.default_trust.is_some() {
                 result.default_trust = next.default_trust;
             }
+            if next.allowed_egress_hosts.is_some() {
+                result.allowed_egress_hosts = next.allowed_egress_hosts;
+            }
             if replace_fields {
                 result.fields = next.fields;
             }
@@ -105,6 +116,21 @@ impl TrustMap {
     }
 
     fn compile(config: FileConfig, server: &str) -> Result<Self> {
+        let allowed_egress_hosts = config.egress.map(|egress| {
+            egress.allow_hosts.into_iter().map(|host| {
+                let normalized = host.to_ascii_lowercase();
+                let url = url::Url::parse(&format!("https://{normalized}/"))
+                    .context("invalid egress host")?;
+                if url.host_str() != Some(normalized.as_str()) || normalized.contains('*')
+                    || !url.username().is_empty() || url.password().is_some()
+                    || url.port().is_some() || url.path() != "/"
+                    || url.query().is_some() || url.fragment().is_some()
+                {
+                    bail!("egress allow_hosts requires exact hosts without URLs, ports or wildcards: {host}");
+                }
+                Ok(normalized)
+            }).collect::<Result<Vec<_>>>()
+        }).transpose()?;
         let mut maps = BTreeMap::new();
         // Validate every server, so an unused misspelled rule cannot lie dormant.
         for (name, settings) in config.servers {
@@ -137,11 +163,14 @@ impl TrustMap {
                 name,
                 Self {
                     default_trust: settings.default_trust,
+                    allowed_egress_hosts: None,
                     fields,
                 },
             );
         }
-        Ok(maps.remove(server).unwrap_or_default())
+        let mut map = maps.remove(server).unwrap_or_default();
+        map.allowed_egress_hosts = allowed_egress_hosts;
+        Ok(map)
     }
 
     fn rules<'a>(&'a self, tool: &'a str) -> impl Iterator<Item = &'a FieldRule> {

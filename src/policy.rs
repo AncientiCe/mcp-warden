@@ -31,6 +31,21 @@ enum Decision {
 
 pub struct Gate {
     pub store: Store,
+    pub allowed_hosts: Vec<String>,
+}
+
+pub fn default_egress_hosts() -> Vec<String> {
+    [
+        "github.com",
+        "api.github.com",
+        "crates.io",
+        "docs.rs",
+        "registry.npmjs.org",
+        "pypi.org",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
 }
 
 impl Gate {
@@ -41,7 +56,7 @@ impl Gate {
         }
         let name = request["params"]["name"].as_str().unwrap_or("");
         let arguments = &request["params"]["arguments"];
-        let action = classify(name, arguments, &self.store);
+        let action = classify(name, arguments, &self.store, &self.allowed_hosts);
         let digest = hex::encode(Sha256::digest(serde_json::to_vec(&json!([
             server, name, arguments
         ]))?));
@@ -95,7 +110,7 @@ fn strings(value: &Value, out: &mut Vec<String>) {
     }
 }
 
-fn classify(name: &str, args: &Value, store: &Store) -> Action {
+fn classify(name: &str, args: &Value, store: &Store, allowed_hosts: &[String]) -> Action {
     let name = name.to_ascii_lowercase();
     let mut values = Vec::new();
     strings(args, &mut values);
@@ -227,17 +242,9 @@ fn classify(name: &str, args: &Value, store: &Store) -> Action {
             && urls.iter().all(|u| {
                 matches!(u.scheme(), "http" | "https")
                     && u.username().is_empty()
-                    && u.host_str().is_some_and(|host| {
-                        matches!(
-                            host,
-                            "github.com"
-                                | "api.github.com"
-                                | "crates.io"
-                                | "docs.rs"
-                                | "registry.npmjs.org"
-                                | "pypi.org"
-                        )
-                    })
+                    && u.password().is_none()
+                    && u.host_str()
+                        .is_some_and(|host| allowed_hosts.iter().any(|allowed| allowed == host))
             });
         return if allowed {
             Action::EgressAllowed

@@ -201,6 +201,18 @@ it, and direct access to the state file or approval CLI must stay under human/cl
 Do not grant an agent unrestricted approval authority. Unknown tool names require confirmation
 after taint; add support deliberately rather than trusting arbitrary `readOnlyHint` claims.
 
+To replace the default outbound host exemptions, add this to a loaded TOML configuration:
+
+```toml
+[egress]
+allow_hosts = ["docs.example.org", "api.github.com"]
+```
+
+Hosts match exactly, case-insensitively. Subdomains require their own entries; URLs, ports,
+wildcards, and credentials are rejected in this list. An empty list removes every exemption.
+Credential-bearing and non-HTTP URLs remain subject to the other-egress policy. Warden checks
+MCP arguments; the wrapped server's redirects and later network activity still require a sandbox.
+
 ## Tool definition changes
 
 `--pin-tools PATH` keeps first-seen fingerprints of tool definitions. Changed definitions gain a

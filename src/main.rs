@@ -190,7 +190,7 @@ fn wrap(args: WrapArgs) -> Result<ExitCode> {
             }
         }
     };
-    let map = mcp_warden::config::TrustMap::load(args.config.as_deref(), &args.server_id)?;
+    let mut map = mcp_warden::config::TrustMap::load(args.config.as_deref(), &args.server_id)?;
     let trust = args
         .filter
         .trust
@@ -199,6 +199,10 @@ fn wrap(args: WrapArgs) -> Result<ExitCode> {
     let gate = if args.enforce {
         Some(mcp_warden::policy::Gate {
             store: mcp_warden::taint::Store::open(args.state.state_file)?,
+            allowed_hosts: map
+                .allowed_egress_hosts
+                .take()
+                .unwrap_or_else(mcp_warden::policy::default_egress_hosts),
         })
     } else {
         None

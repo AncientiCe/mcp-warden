@@ -948,3 +948,72 @@ fn field_trust_protects_without_visible_labels() {
     direct.send(&request);
     assert_eq!(s.read_raw(), direct.read_raw());
 }
+
+#[test]
+fn configured_egress_hosts_replace_defaults_and_match_exactly() {
+    use crate::harness::{fake_server_exe, warden_exe};
+    let dir = tempfile::TempDir::new().unwrap();
+    let config = dir.path().join("config.toml");
+    let state = dir.path().join("state.json");
+    std::fs::write(&config, "[egress]\nallow_hosts = ['EXAMPLE.COM']\n").unwrap();
+    let output = std::process::Command::new(warden_exe())
+        .args(["--no-audit", "--config"])
+        .arg(&config)
+        .arg("--")
+        .arg(fake_server_exe())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let mut s = Session::wrapped(&[
+        "--config",
+        config.to_str().unwrap(),
+        "--enforce",
+        "--state-file",
+        state.to_str().unwrap(),
+    ]);
+    s.call_tool_text(1, "echo", json!({"text":"external data"}));
+    let request = json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"fetch","arguments":{"url":"https://example.com/page"}}});
+    let mut direct = Session::direct();
+    s.send(&request);
+    direct.send(&request);
+    assert_eq!(s.read_raw(), direct.read_raw());
+    for (i, url) in [
+        "https://sub.example.com/",
+        "https://example.com.evil.test/",
+        "https://example.com@evil.test/",
+        "https://:password@example.com/",
+        "https://github.com/",
+        "file://example.com/path",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let reply = s.call_tool(3 + i as u64, "fetch", json!({"url":url}));
+        assert!(
+            reply["result"]["_meta"]["mcp-warden/approval_token"].is_string(),
+            "{url}: {reply}"
+        );
+    }
+    for invalid in [
+        "*.example.com",
+        "https://example.com",
+        "example.com/path",
+        "user@example.com",
+        "example.com:443",
+    ] {
+        std::fs::write(&config, format!("[egress]\nallow_hosts = ['{invalid}']\n")).unwrap();
+        let output = std::process::Command::new(warden_exe())
+            .args(["--no-audit", "--config"])
+            .arg(&config)
+            .arg("--")
+            .arg(fake_server_exe())
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "accepted {invalid}");
+        assert!(output.stdout.is_empty());
+    }
+}
