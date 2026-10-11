@@ -17,6 +17,7 @@ struct Walk<'a> {
     tool: &'a str,
     fallback: Trust,
     findings: &'a mut Vec<Finding>,
+    untrusted_seen: bool,
 }
 
 impl Labeler {
@@ -28,16 +29,18 @@ impl Labeler {
         tool: &str,
         trust: Trust,
         findings: &mut Vec<Finding>,
-    ) {
-        Walk {
+    ) -> bool {
+        let mut walk = Walk {
             sanitizer,
             map: &self.map,
             server,
             tool,
             fallback: trust,
             findings,
-        }
-        .envelope(value);
+            untrusted_seen: false,
+        };
+        walk.envelope(value);
+        walk.untrusted_seen
     }
 }
 
@@ -118,6 +121,7 @@ impl Walk<'_> {
                     return;
                 }
                 let trust = self.map.trust(self.tool, path, self.fallback);
+                self.untrusted_seen |= trust == Trust::Untrusted;
                 if let Some(clean) = self.sanitizer.text(text, trust, self.findings) {
                     *text = clean;
                 }

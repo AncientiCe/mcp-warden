@@ -263,6 +263,7 @@ impl Session {
             return Ok(());
         };
         let mut findings = Vec::new();
+        let mut untrusted_seen = trust == Trust::Untrusted;
         if method == "tools/list" {
             if let Some(pins) = &self.pins {
                 pins.check(&self.server_id, payload, &mut findings)?;
@@ -294,7 +295,7 @@ impl Session {
                     | "resources/templates/list"
             )
         {
-            labeler.apply(
+            untrusted_seen |= labeler.apply(
                 &self.sanitizer,
                 payload,
                 &self.server_id,
@@ -310,7 +311,7 @@ impl Session {
             .filter_map(|f| f.score)
             .fold(0.0_f64, f64::max);
         if let Some(gate) = &self.gate
-            && (trust == Trust::Untrusted || score >= 0.5)
+            && (untrusted_seen || score >= 0.5)
         {
             let level = if score >= 0.75 {
                 crate::taint::Level::Hostile

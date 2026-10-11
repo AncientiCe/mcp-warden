@@ -821,3 +821,41 @@ fn detection_scans_tool_descriptions_without_changing_input_schemas() {
         json!({"type":"object"})
     );
 }
+
+#[test]
+fn untrusted_fields_taint_an_otherwise_trusted_server() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let config = dir.path().join("trust.toml");
+    let state = dir.path().join("state.json");
+    std::fs::write(
+        &config,
+        r#"
+[servers.fake]
+default_trust = "trusted"
+[[servers.fake.fields]]
+tools = ["json"]
+untrusted = ["$.body"]
+dynamic_trust = { field = "$.author_association", trusted_values = ["MEMBER"], effect = "semi" }
+"#,
+    )
+    .unwrap();
+    let mut s = Session::wrapped(&[
+        "--label",
+        "--config",
+        config.to_str().unwrap(),
+        "--enforce",
+        "--state-file",
+        state.to_str().unwrap(),
+    ]);
+    let text = s.call_tool_text(
+        1,
+        "json",
+        json!({"value":{"body":"member-authored data","author_association":"MEMBER"}}),
+    );
+    assert_eq!(
+        serde_json::from_str::<Value>(&text).unwrap()["body"],
+        "member-authored data"
+    );
+    let reply = s.call_tool(2, "create_issue", json!({"body":"outbound"}));
+    assert!(reply["result"]["_meta"]["mcp-warden/approval_token"].is_string());
+}
