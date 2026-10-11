@@ -1,48 +1,205 @@
 # mcp-warden
 
-A drop-in stdio proxy for MCP servers. It cleans untrusted tool output before your agent reads it, and (in later phases) stops the agent from taking damaging actions after it has read untrusted content.
+`mcp-warden` is a stdio proxy for [MCP](https://modelcontextprotocol.io) servers. It sits in front of a server you already run, relays JSON-RPC in both directions, and cleans tool output before an agent reads it.
+
+Prompt injection is ordinary text, and a filter can always be reworded around. Warden is one layer in front of the agent: it removes content a person would not see, it can mark untrusted fields, and it can flag suspicious text when you turn that on. It does not confine the agent. Keep a sandbox and least-privilege credentials as well. Session-wide taint and action blocking (stopping a later push, secret read, or egress) are not in this version.
 
 ```jsonc
 // before
 { "command": "github-mcp-server", "args": ["stdio"] }
+
 // after
 { "command": "mcp-warden", "args": ["--server-id", "github", "--", "github-mcp-server", "stdio"] }
 ```
 
-> **Not a guarantee.** Prompt injection can't be filtered out reliably, because injected instructions are just text and can always be reworded. mcp-warden is defense in depth: it strips hidden content and labels untrusted data, and its last layer controls *actions* (egress, pushes, secret reads) once untrusted text has entered the session. Use it alongside sandboxing and least-privilege tokens, not instead of them.
+The client speaks MCP only to warden. Warden spawns the real server and forwards its stderr and exit code. Lines that nothing rewrites are forwarded byte for byte, including notifications, non-JSON lines, and requests the server sends to the client. Diagnostics go to stderr. The protocol stream stays on stdout.
 
-## Status
+## Install
 
-Early development. See `CHANGELOG.md` for what works today.
+You need a current stable Rust toolchain (edition 2024). From a checkout:
 
-## Trust labeling
+```bash
+cargo build --release --locked
+```
 
-Add `--label` to wrap untrusted result text in provenance tags. `--config examples/trust.toml`
-selects trust rules using `--server-id`. Without a configuration, every server remains untrusted
-unless explicitly started with `--trust trusted`. Labeling is opt-in; the default sanitizer mode
-continues to preserve benign traffic byte for byte.
+The binary is `target/release/mcp-warden` (`target\release\mcp-warden.exe` on Windows). Put that directory on `PATH`, or point the MCP client at the full path. Warden resolves the wrapped server through `PATH` / `PATHEXT`, so `npx` works on Windows.
 
-Trust rules select tools by exact name (`"*"` selects all). Paths support `$`, dotted keys,
-numeric indexes, `[*]`, and descendant keys such as `$..body`. Unknown configuration keys and
-unsupported paths fail at startup. Explicit untrusted paths take precedence over trusted paths.
-Dynamic `author_association` rules affect only the enclosing record: a member's issue does not
-make its comments trusted. Bots stay untrusted. Semi-trusted text is still sanitized.
+This crate is not published yet. Install from this repository, not from crates.io.
 
-The supplied map is a starting configuration, not proof that a field or server is trustworthy.
-It leaves Palace untrusted until provenance is available. Tags describe data provenance; they
-are not an authorization boundary.
+## Wrap a server
 
-## Detection and corpus replay
+```text
+mcp-warden [OPTIONS] -- <SERVER COMMAND>...
+```
 
-`--detect` enables local heuristic annotations (score ≥0.5) and critical-field withholding
-(score ≥0.9), both on the proxy and on `scan`. It uses Unicode normalization, common letter/number
-substitutions, bounded base64 probes, and weighted rule families. Findings include rule ids and scores;
-audit snippets are limited to 1000 characters. Withheld content is not a recoverable archive.
+Everything after `--` is the real server, unchanged. A client config looks like this:
 
-Run `mcp-warden replay tests/corpus` to measure the combined sanitizer and detector on the bundled
-fixtures. These small, curated corpora are regression checks, not a real-world safety benchmark.
-Detection is optional and cannot establish that a response is safe.
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "mcp-warden",
+      "args": [
+        "--server-id", "github",
+        "--label",
+        "--config", "C:/path/to/trust.toml",
+        "--",
+        "github-mcp-server", "stdio"
+      ]
+    }
+  }
+}
+```
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--server-id ID` | `server` | Name used in stderr and the audit log. Also selects that server's block in `--config`. |
+| `--trust untrusted\|trusted` | `untrusted` | `untrusted` applies every sanitizer rule. `trusted` strips only invisible and control characters. |
+| `--allow-image-host HOST` | GitHub hosts | Extra image host to leave in place. Repeat the flag to add more. A leading `.` matches subdomains. |
+| `--label` | off | Wrap untrusted result text in provenance tags. Off, so benign text stays byte for byte. |
+| `--config FILE` | none | TOML trust map. Requires `--label`. |
+| `--detect` | off | Annotate suspicious untrusted text, and withhold it when the score is high. |
+| `--audit-dir DIR` | `~/.mcp-warden/audit` | Where rewritten messages are logged. `$MCP_WARDEN_HOME/audit` overrides the default home. |
+| `--no-audit` | off | Skip the audit log. Sanitizing still runs. |
+
+On Windows, warden puts the server process in a kill-on-close job before spawning it, so the server tree exits when warden exits, including forced termination.
+
+Unknown methods pass through. These responses are sanitized:
+
+- `tools/call`, `resources/read`, and `prompts/get` use the server's trust level
+- `initialize`, `tools/list`, `prompts/list`, `resources/list`, and `resources/templates/list` lose invisible characters only, because that text comes from the server author
+- server requests `sampling/createMessage` and `elicitation/create` are sanitized too
+- a response that arrives after its request was cancelled, or after the pending map overflowed, is still sanitized; the audit line says `unmatched_response`
+
+The pending map holds 4096 requests. Image and audio `data`, and resource `blob` bytes, are left untouched.
+
+## What the sanitizer removes
+
+Every server, including ones you mark trusted, loses:
+
+- Unicode tag characters (the hidden payload is decoded into the audit finding)
+- variation-selector smuggling
+- zero-width characters, keeping real emoji ZWJ sequences, emoji presentation selectors, keycaps, CJK variation sequences, and ZWJ/ZWNJ in Indic and Persian text
+- bidi overrides
+- ANSI escapes and other control characters
+
+Untrusted servers (the default) also lose:
+
+- HTML comments, including an unclosed comment that would hide the rest of the document
+- markdown and HTML images whose host is not allowlisted (`github.com`, `.github.com`, `.githubusercontent.com`, `.githubassets.com`, plus any `--allow-image-host`)
+- base64 or hex runs of 200 characters or more
+- whitespace padding
+
+JSON returned as text is parsed and cleaned per string. The message is re-serialized only when something changed, so a clean result stays byte for byte.
+
+## Trust labels
+
+`--label` wraps untrusted text:
+
+```text
+<untrusted source="github:issue_read" field="$.body">
+...
+</untrusted>
+```
+
+Tag characters in the text are escaped, so a payload cannot forge the closing boundary. Labels describe where the text came from. They are not an authorization check.
+
+`--config` loads a TOML file. `examples/trust.toml` is a starting map, not a statement that any server or field is safe. Read it before you use it: the `impact` block is `trusted` except for a few outsider-controlled fields, which is only appropriate when you control that server. Unknown server ids stay untrusted. Unknown keys and unsupported paths fail at startup.
+
+Rules select tools by exact name. `"*"` selects every tool. Paths support `$`, dotted keys, numeric indexes, `[*]`, and descendant keys such as `$..body`. An explicit untrusted path wins over a trusted path on the same field.
+
+`dynamic_trust` looks at one field on the enclosing record, for example `$.author_association`. A member's issue does not make its comments trusted. Bots stay untrusted (`user.type` of `Bot`, or a login ending in `[bot]`). Semi-trusted text skips the provenance tag and is still sanitized.
+
+## Heuristic detection
+
+`--detect` is off unless you pass it. With it on, untrusted text is scored locally after the sanitizer runs. A score of at least 0.5 keeps the text and prefixes an annotation that names the rule ids. A score of at least 0.9 replaces the field with a withheld notice, so the original text is not sent to the client. The finding still records a truncated payload in the audit log.
+
+The rules look for instruction overrides, role markers, suspicious commands, exfiltration hints, secret paths, concealment, and attempts to plant persistent memory. They also probe a bounded amount of base64. Rewording defeats them. Benign text that matches nothing is forwarded byte for byte.
+
+Measure the checked-in corpora with:
+
+```bash
+mcp-warden replay tests/corpus
+```
+
+The directory must contain `malicious.json` and `benign.json`. The command prints one JSON object with case counts, true positives, false positives, recall, precision, and latency percentiles. It always runs with detection enabled.
+
+## Scan a file
+
+`mcp-warden scan` runs the same sanitizer outside a live session. Clean text goes to stdout. Findings go to stderr as JSON lines. Omit the path to read stdin. The input must be UTF-8.
+
+```bash
+mcp-warden scan notes.md
+mcp-warden scan --fail-on-findings --detect notes.md
+```
+
+`--fail-on-findings` exits with code 3 when anything was found. Other errors exit with code 1. The same `--trust`, `--allow-image-host`, and `--detect` flags apply. `--label` is a proxy flag; `scan` does not add provenance tags.
+
+## Audit log
+
+Each rewritten message appends one JSON line to `~/.mcp-warden/audit/YYYY-MM-DD.jsonl` (UTC). The line has the server id, method, tool, trust level, findings (including a decoded hidden payload when there is one), and SHA-256 of the message body before and after. Stderr gets a one-line summary.
+
+Files older than 30 days are deleted the next time warden starts. The log can contain whatever the server returned, including secrets that were hidden in the content. Keep that directory private to your user. See [SECURITY.md](SECURITY.md).
+
+## Limits
+
+- Warden sees MCP traffic on stdio. A client tool that runs a shell, fetches a URL, or reads a file never passes through it.
+- HTTP and SSE transports are not implemented.
+- Marking a server `--trust trusted`, or a field trusted in the config, turns off the untrusted rules for that text.
+- `--detect` and `--label` are optional. The default proxy only strips the hidden-content rules above.
+- Nothing in this version blocks a later tool call because an earlier result was untrusted.
 
 ## Development
 
-See `AGENTS.md` for the rules (TDD behavior tests, quality gates). Run every gate with `make check`, or `pwsh scripts/check.ps1` on Windows.
+## MCP action control
+
+Add `--enforce` to every wrapped server to share taint and gate subsequent sensitive calls.
+All instances use `~/.mcp-warden/state.json` (or `$MCP_WARDEN_HOME/state.json`) unless
+`--state-file PATH` selects a separate scope. This intentionally shares taint across clients;
+use one explicit path per client session when isolation is required. Untrusted responses set taint
+even with `--detect` disabled. Detection can raise it to SUSPICIOUS or HOSTILE.
+
+Read/search calls remain allowed, while secret reads, external fetches, publishing, workflow/config
+changes, destructive actions and unknown tool semantics receive confirmation or denial according to
+taint. The initial egress allowlist is github.com, api.github.com, crates.io, docs.rs,
+registry.npmjs.org and pypi.org; only exact parsed hosts match. Tool classification uses known names
+and argument paths, not server-provided safety annotations. This does not police redirects or the
+server's network behavior.
+
+Blocked tool calls return `isError: true`, a reason, and (when confirmation is permitted) an
+`_meta["mcp-warden/approval_token"]`. A human can run `mcp-warden approve TOKEN` with the same
+state-file option, then retry the exact call. Approval expires after ten minutes and is single-use;
+changing the server, tool, arguments, or escalating taint invalidates it. Review the requested call
+before approving. `mcp-warden status` displays taint and pending approvals; `mcp-warden untaint`
+clears them after review. State expires after two hours of inactivity.
+
+This enforcement covers MCP traffic through warden. Built-in terminal/file/browser tools bypass
+it, and direct access to the state file or approval CLI must stay under human/client control.
+Do not grant an agent unrestricted approval authority. Unknown tool names require confirmation
+after taint; add support deliberately rather than trusting arbitrary `readOnlyHint` claims.
+
+## Development
+
+Behavior is tested by running the `mcp-warden` binary against `examples/fake_server.rs` and the corpora in `tests/corpus/`. `AGENTS.md` is the working agreement for this repository.
+
+The gate suite is formatting, Clippy, `cargo audit`, `cargo test --workspace`, and `cargo build --workspace --locked`.
+
+```bash
+make check                 # Linux and macOS
+pwsh scripts/check.ps1     # Windows
+```
+
+GitHub Actions (`.github/workflows/ci.yml`) runs those gates on every push and pull request. Tests and the locked build run on Ubuntu and Windows.
+
+## Security
+
+Report a vulnerability in private. The threat model, operator assumptions, and contact path are in [SECURITY.md](SECURITY.md).
+
+## License
+
+Licensed under either of
+
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or https://opensource.org/licenses/MIT)
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or https://www.apache.org/licenses/LICENSE-2.0)
+
+at your option.
