@@ -4,6 +4,8 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-11
+
 ### Fixed
 
 - The hook blocks the agent only from running the user-only commands (show, release, trust,
