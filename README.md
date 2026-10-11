@@ -176,6 +176,15 @@ it, and direct access to the state file or approval CLI must stay under human/cl
 Do not grant an agent unrestricted approval authority. Unknown tool names require confirmation
 after taint; add support deliberately rather than trusting arbitrary `readOnlyHint` claims.
 
+## Tool definition changes
+
+`--pin-tools PATH` keeps first-seen fingerprints of tool definitions. Changed definitions gain a
+warning and an audit finding; the original fingerprint is retained. Review a server upgrade before
+manually removing its pin file to establish a new baseline. Keep the pin file outside agent-writable
+locations where possible. This is trust on first use: it cannot attest that the first definition was safe.
+`--detect` additionally scans tool descriptions. With `--enforce`, a changed definition or high-scoring
+description raises shared taint before the client sees it.
+
 ## Development
 
 Behavior is tested by running the `mcp-warden` binary against `examples/fake_server.rs` and the corpora in `tests/corpus/`. `AGENTS.md` is the working agreement for this repository.

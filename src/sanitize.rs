@@ -28,6 +28,8 @@ pub enum Trust {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FindingKind {
+    /// A previously seen tool definition changed.
+    ToolChanged,
     /// An outbound MCP call was blocked by action policy.
     Policy,
     /// Heuristic prompt-injection evidence, with rule ids and a combined score.
@@ -57,6 +59,7 @@ pub enum FindingKind {
 impl FindingKind {
     pub fn name(self) -> &'static str {
         match self {
+            Self::ToolChanged => "tool_changed",
             Self::Policy => "policy",
             Self::Injection => "injection",
             Self::Provenance => "provenance",
@@ -146,6 +149,9 @@ pub struct Sanitizer {
 }
 
 impl Sanitizer {
+    pub fn detection_enabled(&self) -> bool {
+        self.detector.is_some()
+    }
     pub fn new(policy: Policy) -> Result<Self, regex::Error> {
         Ok(Self {
             detector: policy

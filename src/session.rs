@@ -41,6 +41,7 @@ pub struct Session {
     pending: Mutex<IndexMap<String, Pending>>,
     labeler: Option<crate::label::Labeler>,
     gate: Option<crate::policy::Gate>,
+    pins: Option<crate::pins::Pins>,
 }
 
 impl Session {
@@ -58,6 +59,7 @@ impl Session {
             pending: Mutex::new(IndexMap::new()),
             labeler: None,
             gate: None,
+            pins: None,
         }
     }
 
@@ -68,6 +70,11 @@ impl Session {
 
     pub fn with_gate(mut self, gate: Option<crate::policy::Gate>) -> Self {
         self.gate = gate;
+        self
+    }
+
+    pub fn with_pins(mut self, pins: Option<crate::pins::Pins>) -> Self {
+        self.pins = pins;
         self
     }
 
@@ -256,6 +263,27 @@ impl Session {
             return Ok(());
         };
         let mut findings = Vec::new();
+        if method == "tools/list" {
+            if let Some(pins) = &self.pins {
+                pins.check(&self.server_id, payload, &mut findings)?;
+            }
+            if self.sanitizer.detection_enabled()
+                && let Some(tools) = payload.get_mut("tools").and_then(Value::as_array_mut)
+            {
+                for tool in tools {
+                    if let Some(description) = tool
+                        .get("description")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                        && let Some(clean) =
+                            self.sanitizer
+                                .text(&description, Trust::Untrusted, &mut findings)
+                    {
+                        tool["description"] = Value::String(clean);
+                    }
+                }
+            }
+        }
         if let Some(labeler) = &self.labeler
             && !matches!(
                 method.as_str(),
@@ -277,13 +305,13 @@ impl Session {
         } else {
             sanitize_json(&self.sanitizer, payload, trust, &mut findings);
         }
+        let score = findings
+            .iter()
+            .filter_map(|f| f.score)
+            .fold(0.0_f64, f64::max);
         if let Some(gate) = &self.gate
-            && trust == Trust::Untrusted
+            && (trust == Trust::Untrusted || score >= 0.5)
         {
-            let score = findings
-                .iter()
-                .filter_map(|f| f.score)
-                .fold(0.0_f64, f64::max);
             let level = if score >= 0.75 {
                 crate::taint::Level::Hostile
             } else if score >= 0.5 {

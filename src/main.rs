@@ -35,6 +35,9 @@ struct Cli {
 
 #[derive(Args)]
 struct WrapArgs {
+    /// Persist first-seen tool fingerprints and warn if definitions change.
+    #[arg(long)]
+    pin_tools: Option<PathBuf>,
     /// Enforce shared taint-based policy on outbound MCP calls.
     #[arg(long)]
     enforce: bool,
@@ -190,7 +193,8 @@ fn wrap(args: WrapArgs) -> Result<ExitCode> {
     let session = Arc::new(
         Session::new(args.server_id, trust, args.filter.sanitizer()?, audit)
             .with_labeler(args.label.then_some(mcp_warden::label::Labeler { map }))
-            .with_gate(gate),
+            .with_gate(gate)
+            .with_pins(args.pin_tools.map(|path| mcp_warden::pins::Pins { path })),
     );
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()

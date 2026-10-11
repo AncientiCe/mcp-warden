@@ -5,6 +5,7 @@ pub mod config;
 pub mod detect;
 pub mod extract;
 pub mod label;
+pub mod pins;
 pub mod policy;
 pub mod relay;
 pub mod replay;

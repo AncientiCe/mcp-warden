@@ -14,6 +14,9 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ### Added
 
+- `--pin-tools FILE` records first-seen tool definitions and warns/audits subsequent changes without
+  silently accepting a new baseline. `--detect` also scans tool descriptions, preserving input schemas.
+  Definition changes and detected tool poisoning raise shared taint when enforcement is enabled.
 - Opt-in `--enforce` shared taint-based MCP action policy, independent of heuristic detection.
   Untrusted responses taint the shared session before delivery; sensitive and unknown calls require
   confirmation or are denied at higher taint. Approved calls are bound to server, tool and arguments,
