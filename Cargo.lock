@@ -346,6 +346,7 @@ dependencies = [
  "clap",
  "dirs",
  "hex",
+ "indexmap",
  "regex",
  "serde",
  "serde_json",

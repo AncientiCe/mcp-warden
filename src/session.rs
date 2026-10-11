@@ -1,15 +1,18 @@
 //! Per-connection state: which request each response answers, and what gets
 //! sanitized on its way to the client.
 
-use std::collections::HashMap;
 use std::sync::Mutex;
 
+use indexmap::IndexMap;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::audit::{self, Audit, Entry};
 use crate::extract::sanitize_json;
 use crate::sanitize::{Finding, Sanitizer, Trust};
+
+/// Unanswered requests must not accumulate for the lifetime of a connection.
+const MAX_PENDING_REQUESTS: usize = 4096;
 
 struct Pending {
     method: String,
@@ -29,7 +32,7 @@ pub struct Session {
     trust: Trust,
     sanitizer: Sanitizer,
     audit: Option<Audit>,
-    pending: Mutex<HashMap<String, Pending>>,
+    pending: Mutex<IndexMap<String, Pending>>,
 }
 
 impl Session {
@@ -44,7 +47,7 @@ impl Session {
             trust,
             sanitizer,
             audit,
-            pending: Mutex::new(HashMap::new()),
+            pending: Mutex::new(IndexMap::new()),
         }
     }
 
@@ -58,6 +61,14 @@ impl Session {
             return;
         };
         for msg in messages(&value) {
+            if msg.get("method").and_then(Value::as_str) == Some("notifications/cancelled")
+                && msg.get("id").is_none()
+            {
+                if let Some(id) = msg.get("params").and_then(|params| params.get("requestId")) {
+                    pending.shift_remove(&id.to_string());
+                }
+                continue;
+            }
             let (Some(id), Some(method)) =
                 (msg.get("id"), msg.get("method").and_then(Value::as_str))
             else {
@@ -68,8 +79,13 @@ impl Session {
                 .and_then(|p| p.get("name").or_else(|| p.get("uri")))
                 .and_then(Value::as_str)
                 .map(str::to_string);
+            let key = id.to_string();
+            pending.shift_remove(&key);
+            if pending.len() >= MAX_PENDING_REQUESTS {
+                pending.shift_remove_index(0);
+            }
             pending.insert(
-                id.to_string(),
+                key,
                 Pending {
                     method: method.to_string(),
                     target,
@@ -110,11 +126,22 @@ impl Session {
                 }
                 (method.to_string(), None, self.trust, "params")
             } else {
-                let Some(pending) = obj.get("id").and_then(|id| self.take_pending(id)) else {
+                let Some(id) = obj.get("id") else {
                     return;
                 };
+                if !obj.contains_key("result") && !obj.contains_key("error") {
+                    return;
+                }
+                // A cancelled or evicted request can still receive a response.
+                // Losing correlation must never become a sanitizer bypass.
+                let pending = self.take_pending(id).unwrap_or_else(|| Pending {
+                    method: "unmatched_response".to_string(),
+                    target: None,
+                });
                 let trust = match pending.method.as_str() {
-                    "tools/call" | "resources/read" | "prompts/get" => self.trust,
+                    "tools/call" | "resources/read" | "prompts/get" | "unmatched_response" => {
+                        self.trust
+                    }
                     // Descriptions and instructions are written by the server's
                     // author, not by outsiders: strip only what hides.
                     "initialize"
@@ -147,7 +174,7 @@ impl Session {
     }
 
     fn take_pending(&self, id: &Value) -> Option<Pending> {
-        self.pending.lock().ok()?.remove(&id.to_string())
+        self.pending.lock().ok()?.shift_remove(&id.to_string())
     }
 
     fn report(&self, reports: &[Report], before: &[u8], after: &[u8]) {

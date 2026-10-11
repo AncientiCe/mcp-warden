@@ -6,6 +6,9 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Pending request tracking is capped at 4096 entries and releases cancelled requests. Late or
+  unmatched responses still receive sanitization at the server's configured trust level; their audit
+  entries use `unmatched_response` because the original method and target are no longer known.
 - Windows now terminates the wrapped server process tree when warden exits, including forced
   termination. Job membership is established before spawning the server to avoid orphan races.
 

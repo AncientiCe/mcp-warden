@@ -373,3 +373,71 @@ fn unknown_server_program_fails_cleanly() {
         String::from_utf8_lossy(&output.stderr).contains("definitely-not-a-real-mcp-server-xyz")
     );
 }
+
+fn delayed_response(s: &mut Session, id: Value, text: &str) -> Vec<u8> {
+    let line = format!(
+        "{{ \"jsonrpc\":\"2.0\", \"id\":{id}, \"result\":{{\"content\":[{{\"type\":\"text\",\"text\":{}}}]}} }}",
+        json!(text)
+    );
+    s.send(
+        &json!({"jsonrpc":"2.0","id":"deliver","method":"tools/call",
+        "params":{"name":"raw","arguments":{"line":line}}}),
+    );
+    s.read_raw()
+}
+
+#[test]
+fn cancelled_requests_release_tracking_but_late_responses_are_sanitized() {
+    let mut s = Session::wrapped(&[]);
+    s.send(
+        &json!({"jsonrpc":"2.0","id":"cancel-me","method":"tools/call",
+        "params":{"name":"raw","arguments":{"line":"waiting"}}}),
+    );
+    assert_eq!(s.read_raw(), b"waiting\n");
+    s.send(&json!({"jsonrpc":"2.0","method":"notifications/cancelled",
+        "params":{"requestId":"cancel-me","reason":"no longer needed"}}));
+    let reply: Value = serde_json::from_slice(&delayed_response(
+        &mut s,
+        json!("cancel-me"),
+        "visible<!-- hidden -->",
+    ))
+    .unwrap();
+    assert_eq!(reply["result"]["content"][0]["text"], "visible");
+    let (_, s) = s.finish();
+    let audit = s.audit();
+    assert_eq!(audit.len(), 1);
+    assert_eq!(audit[0]["method"], "unmatched_response");
+    assert!(audit[0]["target"].is_null());
+}
+
+#[test]
+fn oldest_unanswered_request_is_evicted_without_a_sanitization_bypass() {
+    let mut s = Session::wrapped(&[]);
+    // A notification is a deterministic barrier: the server has received all
+    // previous unanswered requests before producing this line.
+    for id in 0..4097 {
+        s.send(&json!({"jsonrpc":"2.0","id":id,"method":"tools/call",
+            "params":{"name":"raw","arguments":{"line":"waiting"}}}));
+        assert_eq!(s.read_raw(), b"waiting\n");
+    }
+    let reply: Value = serde_json::from_slice(&delayed_response(
+        &mut s,
+        json!(0),
+        "visible<!-- hidden -->",
+    ))
+    .unwrap();
+    assert_eq!(reply["result"]["content"][0]["text"], "visible");
+    let (_, s) = s.finish();
+    assert_eq!(s.audit()[0]["method"], "unmatched_response");
+}
+
+#[test]
+fn unmatched_benign_responses_pass_through_byte_for_byte() {
+    let direct = delayed_response(&mut Session::direct(), json!("unknown"), "ordinary text");
+    let wrapped = delayed_response(
+        &mut Session::wrapped(&[]),
+        json!("unknown"),
+        "ordinary text",
+    );
+    assert_eq!(wrapped, direct);
+}
