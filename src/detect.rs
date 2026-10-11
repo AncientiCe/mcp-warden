@@ -44,7 +44,7 @@ impl Detector {
             (
                 "R-OVERRIDE",
                 0.75,
-                r"(?i)(?:ignore|disregard)\s+(?:all\s+)?(?:previous|above|prior|system)\s+instructions|ignoriere\s+alle\s+vorherigen\s+anweisungen|ignor[ăa]\s+toate\s+instruc[țt]iunile\s+anterioare|ignore[rz]?\s+toutes\s+les\s+instructions\s+pr[ée]c[ée]dentes|ignora\s+(?:todas\s+)?las\s+instrucciones\s+anteriores|ignora\s+(?:tutte\s+)?le\s+istruzioni\s+precedenti|ignor[ea]\s+(?:todas\s+)?as\s+instru[çc][õo]es\s+anteriores|you are now|developer mode|\bnew\s+(?:priority|instructions?|directive|objective)\s*:|\b(?:outranks|overrides|supersedes|takes\s+precedence\s+over)\s+(?:the\s+|your\s+|any\s+)?(?:user|previous|prior|system|original|earlier)\b".into(),
+                r"(?i)(?:ignore|disregard)\s+(?:all\s+)?(?:previous|above|prior|system)\s+instructions|\b(?:ignore|disregard|forget)\s+(?:all\s+)?(?:your\s+)?(?:previous|prior|earlier|preceding|above)\s+(?:steps|tasks|directions|rules|guidance|context|prompts?)\b|ignoriere\s+alle\s+vorherigen\s+anweisungen|ignor[ăa]\s+toate\s+instruc[țt]iunile\s+anterioare|ignore[rz]?\s+toutes\s+les\s+instructions\s+pr[ée]c[ée]dentes|ignora\s+(?:todas\s+)?las\s+instrucciones\s+anteriores|ignora\s+(?:tutte\s+)?le\s+istruzioni\s+precedenti|ignor[ea]\s+(?:todas\s+)?as\s+instru[çc][õo]es\s+anteriores|you are now|developer mode|\bnew\s+(?:priority|instructions?|directive|objective)\s*:|\b(?:outranks|overrides|supersedes|takes\s+precedence\s+over)\s+(?:the\s+|your\s+|any\s+)?(?:user|previous|prior|system|original|earlier)\b".into(),
             ),
             (
                 "R-ROLE",
@@ -139,6 +139,36 @@ impl Detector {
                 "R-MANIFEST",
                 0.3,
                 r"(?i)\b(?:apply|make)\s+(?:this|these|the\s+following)\s+(?:changes?|patch|edits?|diff)\s+(?:to|in)\s+(?:the\s+)?(?:requirements\.txt|cargo\.toml|package\.json|pom\.xml|nuget\.config|\.npmrc|pip\.conf|pyproject\.toml|go\.mod|gemfile|build\.gradle|\.github/workflows|main\.tf|homebrew\s+formula)".into(),
+            ),
+            // Changing a dependency: routine on its own, a lever when someone else asks the agent.
+            (
+                "R-DEPEDIT",
+                0.2,
+                r"(?i)\b(?:bump(?:ed|s|ing)?|upgrad(?:e|ed|es|ing)|updat(?:e|ed|es|ing)|downgrad(?:e|ed|es|ing)|pin(?:ned|s)?|swap(?:ped|s)?)\b(?:[^.\n]|\.\S){0,60}\b(?:deps?|dependenc(?:y|ies)|packages?|crates?|package\.json|cargo\.toml|requirements\.txt|go\.mod|pyproject\.toml|gemfile|lockfile)\b".into(),
+            ),
+            // Pointing something at a repository on a code host: how a fork replaces a dependency.
+            (
+                "R-DEPSOURCE",
+                0.3,
+                r"(?i)\b(?:point|switch|repoint|redirect)\b[^.\n]{0,60}\b(?:to|at)\s+(?:https?://)?(?:github\.com|gitlab\.com|bitbucket\.org|codeberg\.org)/[\w.-]+/[\w.-]+".into(),
+            ),
+            // Someone else's authority claimed to the reader: "the maintainer asked you to".
+            (
+                "R-AUTHORITY",
+                0.4,
+                r"(?i)\b(?:maintainers?|owners?|admins?|repo\s+owner|project\s+leads?|security\s+team|core\s+team)\s+(?:has\s+|have\s+|already\s+)?(?:asked|wants?|wanted|requested|told|instructed|authori[sz]ed|approved|needs?)\b(?:[^.\n]|\.\S){0,60}\byou\b".into(),
+            ),
+            // Text that speaks to the agent reading it rather than to people.
+            (
+                "R-AGENTADDR",
+                0.35,
+                r"(?i)\b(?:note|message|instructions?|reminder|directive)\s+(?:for|to)\s+(?:the\s+|any\s+|all\s+)?(?:ai\s+|llm\s+|coding\s+)?(?:agent|assistant|bot|model|ai|llm|copilot|claude|codex|cursor)s?\b|\b(?:ai|llm|coding)\s+(?:agents?|assistants?|models?)\s+(?:reading|processing|triaging|summari[sz]ing)\s+this\b|\bif\s+you\s+are\s+an?\s+(?:ai|llm|language\s+model|agent|assistant|bot)\b|\bdear\s+(?:ai|llm|agent|assistant|claude|copilot)\b".into(),
+            ),
+            // Work slipped in ahead of the agent's own task on this content.
+            (
+                "R-PRETASK",
+                0.3,
+                r"(?i)\b(?:before|instead\s+of|prior\s+to)\s+(?:you\s+)?(?:summari[sz](?:e|ing)|triag(?:e|ing)|review(?:ing)?|reply(?:ing)?|respond(?:ing)?|answer(?:ing)?|analy[sz](?:e|ing)|label(?:l?ing)?)\s+(?:this|the)\s+(?:issue|pr|pull\s+request|ticket|report|bug|thread|page|email|message)\b".into(),
             ),
             // Commands that switch off, reveal or erase mcp-warden itself.
             (
