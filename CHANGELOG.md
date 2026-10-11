@@ -4,6 +4,8 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-11
+
 ### Changed
 
 - The quarantine notice asks the agent to suggest closing a flagged issue or pull request as a
