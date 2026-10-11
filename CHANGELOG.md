@@ -4,6 +4,8 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-11
+
 ### Fixed
 
 - Asking the agent to hide something from the user ("do not tell the user", "without telling the
