@@ -16,6 +16,27 @@ The client speaks MCP only to warden. Warden spawns the real server and forwards
 
 ## Install
 
+Prebuilt binaries for Linux, macOS and Windows ship with each
+[GitHub release](https://github.com/AncientiCe/mcp-warden/releases). The installers download the
+archive for your platform, verify its SHA-256 checksum, and install `mcp-warden`.
+
+macOS and Linux (installs to `~/.local/bin`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AncientiCe/mcp-warden/main/scripts/install.sh | sh
+```
+
+Windows PowerShell (installs to `%LOCALAPPDATA%\Programs\mcp-warden\bin` and adds it to the user `PATH`):
+
+```powershell
+irm https://raw.githubusercontent.com/AncientiCe/mcp-warden/main/scripts/install.ps1 | iex
+```
+
+Set `MCP_WARDEN_VERSION` (for example `v0.1.0`) to pin a release, or `MCP_WARDEN_INSTALL_DIR` to
+choose the install directory.
+
+### From source
+
 You need a current stable Rust toolchain (edition 2024). From a checkout:
 
 ```bash
@@ -24,9 +45,7 @@ cargo build --release --locked
 
 The binary is `target/release/mcp-warden` (`target\release\mcp-warden.exe` on Windows). Put that directory on `PATH`, or point the MCP client at the full path. Warden resolves the wrapped server through `PATH` / `PATHEXT`, so `npx` works on Windows.
 
-This crate is not published yet. Install from this repository, not from crates.io.
-
-Use `cargo install --path . --locked` from a checkout, or
+This crate is not published on crates.io. Use `cargo install --path . --locked` from a checkout, or
 `cargo install --git https://github.com/AncientiCe/mcp-warden --locked` for the published Git revision.
 
 ## Upgrade a client configuration

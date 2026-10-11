@@ -27,6 +27,9 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ### Added
 
+- Install scripts `scripts/install.sh` (Linux/macOS) and `scripts/install.ps1` (Windows) download a
+  release archive, verify its SHA-256 checksum and install `mcp-warden`. `MCP_WARDEN_VERSION` pins a
+  release and `MCP_WARDEN_INSTALL_DIR` chooses the destination.
 - `mcp-warden wrap CONFIG` upgrades stdio entries under `mcpServers` or `servers`, enables labeling,
   detection, enforcement and tool pinning, preserves original arguments/environment and unrelated
   settings, and creates an exact backup before writing. Repeated runs are idempotent; invalid entries
