@@ -42,7 +42,7 @@ Before considering a task done, ensure all of the following pass:
 - **`cargo test --workspace`**: the full behavior-test suite passes.
 - **`cargo build --workspace --locked`**: builds reproducibly from the committed `Cargo.lock`, with no silent lockfile drift.
 
-Run all five with `make check` (Linux/macOS) or `pwsh scripts/check.ps1` (Windows). That target is the actual definition of "green", not a subset picked by judgment in the moment. Match CI locally with the exact commands above (see `.github/workflows/ci.yml`). Windows is a first-class platform, since the primary user works there, and CI runs the tests on both Linux and Windows.
+Run all five with `make check` (Linux/macOS) or `pwsh scripts/check.ps1` (Windows). That target is the actual definition of "green", not a subset picked by judgment in the moment. Match CI locally with the exact commands above (see `.github/workflows/ci.yml`). Windows is a first-class platform, since the primary user works there, and CI runs the tests on Linux, macOS and Windows.
 
 No `--no-verify`, no skipping a gate, no `#[allow(clippy::...)]` without a comment explaining why the lint doesn't apply, and no narrowing a test's assertions or deleting a fixture just to turn a red gate green. If a gate is red, the code is wrong, not the test. The exception is when investigation shows the test encoded the wrong expected behavior: then fix it deliberately and say so. `cargo audit` findings get triaged (upgrade, or document an accepted risk), never ignored.
 
