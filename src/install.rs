@@ -1,4 +1,4 @@
-//! Registers `mcp-warden hook` in Claude Code settings for every tool, once.
+//! Registers `mcp-warden hook` for every tool in an agent client's hook settings, once.
 
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
@@ -7,22 +7,30 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use serde_json::{Map, Value, json};
 
+use crate::hook::Client;
 use crate::wrap_config::write_with_backup;
 
 const EVENTS: [&str; 2] = ["PreToolUse", "PostToolUse"];
 const TIMEOUT_SECONDS: u64 = 30;
 
-/// `~/.claude/settings.json`, the user-wide Claude Code settings.
-pub fn default_settings() -> Result<PathBuf> {
-    dirs::home_dir()
-        .map(|home| home.join(".claude").join("settings.json"))
-        .context("no home directory; supply --settings")
+/// The user-wide hook settings of `client`.
+pub fn default_settings(client: Client) -> Result<PathBuf> {
+    let home = dirs::home_dir().context("no home directory; supply --settings")?;
+    Ok(match client {
+        Client::ClaudeCode => home.join(".claude").join("settings.json"),
+        Client::Codex => home.join(".codex").join("hooks.json"),
+    })
 }
 
 /// Adds (or with `install == false` removes) warden's hooks, keeping everything
 /// else in the file and an exact backup of it.
-pub fn claude_code(settings: &Path, executable: &Path, install: bool) -> Result<Value> {
-    let command = hook_command(executable);
+pub fn hook_settings(
+    settings: &Path,
+    executable: &Path,
+    client: Client,
+    install: bool,
+) -> Result<Value> {
+    let command = hook_command(executable, client);
     if !install && !settings.exists() {
         return Ok(
             json!({"removed": false, "settings": settings, "command": command, "backup": null}),
@@ -39,22 +47,22 @@ pub fn claude_code(settings: &Path, executable: &Path, install: bool) -> Result<
         .write(true)
         .open(settings)
         .with_context(|| format!("opening {}", settings.display()))?;
-    File::lock(&file).context("locking Claude Code settings")?;
+    File::lock(&file).context("locking hook settings")?;
     if file.metadata()?.len() > 16_777_216 {
-        bail!("Claude Code settings exceed size limit");
+        bail!("hook settings exceed size limit");
     }
     let mut original = Vec::new();
     file.read_to_end(&mut original)?;
     let existed = !original.iter().all(u8::is_ascii_whitespace);
     let before: Value = if existed {
-        serde_json::from_slice(&original).context("Claude Code settings must be strict JSON")?
+        serde_json::from_slice(&original).context("hook settings must be strict JSON")?
     } else {
         json!({})
     };
     let mut after = before.clone();
     let root = after
         .as_object_mut()
-        .context("Claude Code settings must be a JSON object")?;
+        .context("hook settings must be a JSON object")?;
     let hooks = root
         .entry("hooks")
         .or_insert_with(|| Value::Object(Map::new()))
@@ -94,15 +102,18 @@ pub fn claude_code(settings: &Path, executable: &Path, install: bool) -> Result<
 }
 
 /// Quoted, with forward slashes, so it survives both cmd and POSIX shells.
-fn hook_command(executable: &Path) -> String {
+fn hook_command(executable: &Path, client: Client) -> String {
     let path = executable.to_string_lossy().replace('\\', "/");
-    format!("\"{path}\" hook")
+    match client {
+        Client::ClaudeCode => format!("\"{path}\" hook"),
+        Client::Codex => format!("\"{path}\" hook --client codex"),
+    }
 }
 
 fn is_warden(hook: &Value) -> bool {
-    hook["command"]
-        .as_str()
-        .is_some_and(|c| c.contains("mcp-warden") && c.ends_with(" hook"))
+    hook["command"].as_str().is_some_and(|c| {
+        c.contains("mcp-warden") && (c.ends_with(" hook") || c.contains(" hook --client "))
+    })
 }
 
 fn remove_warden(hooks: &mut Map<String, Value>, event: &str) -> Result<()> {

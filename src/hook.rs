@@ -59,7 +59,15 @@ const EXTERNAL_COMMAND: &str = r"(?i)(?:^|[\s;&|(`$])(?:curl|wget|http|https|xh|
 /// Commands only the user may run: they reveal or release quarantined content.
 const USER_ONLY: &str = r#"(?i)mcp-warden(?:\.exe)?\\?["']?\s+(?:show|release|trust|distrust)\b|\.mcp-warden(?:/|\\)+quarantine"#;
 
+/// The agent client sending hook events; each has its own output format.
+#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Client {
+    ClaudeCode,
+    Codex,
+}
+
 pub struct Hook {
+    client: Client,
     audit: Option<Audit>,
     quarantine: Quarantine,
     projects: Projects,
@@ -68,8 +76,9 @@ pub struct Hook {
 }
 
 impl Hook {
-    pub fn new() -> Result<Self> {
+    pub fn new(client: Client) -> Result<Self> {
         Ok(Self {
+            client,
             audit: Audit::default_dir().and_then(|dir| Audit::open(dir).ok()),
             quarantine: Quarantine::open()?,
             projects: Projects::open()?,
@@ -136,6 +145,11 @@ impl Hook {
                 .save(&id, tool, &event["tool_input"], &findings, withheld)?;
         }
         let message = context(tool, &findings, quarantined.then_some(id.as_str()), &origin);
+        if self.client == Client::Codex {
+            // Codex cannot swap in cleaned output: anything worth a message
+            // replaces the result; ordinary markup passes as it is.
+            return Ok(message.map(|reason| json!({"decision": "block", "reason": reason})));
+        }
         if message.is_none() && !changed {
             return Ok(None);
         }

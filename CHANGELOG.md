@@ -21,6 +21,10 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
   prompt; a flag in such a project tells the user how to trust it.
 - The hook stays silent unless it withholds injection or removes smuggling characters; ordinary
   hidden markup such as issue-template comments is stripped without a message.
+- Codex support: `mcp-warden install codex` registers the hook in `~/.codex/hooks.json`
+  (`hook --client codex`). Codex cannot substitute cleaned output, so withheld injection and
+  smuggled text replace the whole tool result with the quarantine notice. Codex asks once, via
+  `/hooks`, to trust a new hook.
 
 ### Removed
 

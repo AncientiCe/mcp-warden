@@ -8,6 +8,7 @@ use clap::{Args, Parser, Subcommand};
 
 use mcp_warden::audit::Audit;
 use mcp_warden::extract::sanitize_string;
+use mcp_warden::hook::Client;
 use mcp_warden::relay;
 use mcp_warden::sanitize::{Policy, Sanitizer, Trust};
 use mcp_warden::session::Session;
@@ -101,17 +102,12 @@ impl FilterArgs {
     }
 }
 
-#[derive(Clone, Copy, clap::ValueEnum)]
-enum Client {
-    ClaudeCode,
-}
-
 #[derive(Args)]
 struct ClientArgs {
     /// Agent client to configure.
     #[arg(value_enum)]
     client: Client,
-    /// Settings file [default: ~/.claude/settings.json].
+    /// Hook settings file [default: ~/.claude/settings.json or ~/.codex/hooks.json].
     #[arg(long)]
     settings: Option<PathBuf>,
 }
@@ -147,7 +143,11 @@ enum Command {
         target: ClientArgs,
     },
     /// Claude Code hook: reads one hook event on stdin and checks tool results from any source.
-    Hook,
+    Hook {
+        /// Agent client sending the event.
+        #[arg(long, value_enum, default_value = "claude-code")]
+        client: Client,
+    },
     /// Show content the hook withheld from the agent (for you, not the agent).
     Show { id: String },
     /// Let the agent see withheld content after you reviewed it.
@@ -183,7 +183,7 @@ fn main() -> ExitCode {
         Some(Command::Status { state }) => state_command(state, None, false),
         Some(Command::Approve { token, state }) => state_command(state, Some(token), false),
         Some(Command::Untaint { state }) => state_command(state, None, true),
-        Some(Command::Hook) => hook(),
+        Some(Command::Hook { client }) => hook(client),
         Some(Command::Show { id }) => show(&id, false),
         Some(Command::Release { id }) => show(&id, true),
         Some(Command::Trust { dir }) => trust(&dir, false),
@@ -287,23 +287,23 @@ fn state_command(args: StateArgs, approval: Option<String>, clear: bool) -> Resu
 }
 
 fn install(target: ClientArgs, install: bool) -> Result<ExitCode> {
-    let Client::ClaudeCode = target.client;
     let settings = match target.settings {
         Some(path) => path,
-        None => mcp_warden::install::default_settings()?,
+        None => mcp_warden::install::default_settings(target.client)?,
     };
     let executable = std::env::current_exe().context("locating the mcp-warden executable")?;
-    let report = mcp_warden::install::claude_code(&settings, &executable, install)?;
+    let report =
+        mcp_warden::install::hook_settings(&settings, &executable, target.client, install)?;
     writeln!(std::io::stdout(), "{report}")?;
     Ok(ExitCode::SUCCESS)
 }
 
-fn hook() -> Result<ExitCode> {
+fn hook(client: Client) -> Result<ExitCode> {
     let mut input = Vec::new();
     std::io::stdin()
         .read_to_end(&mut input)
         .context("reading hook input")?;
-    if let Some(output) = mcp_warden::hook::Hook::new()?.handle(&input)? {
+    if let Some(output) = mcp_warden::hook::Hook::new(client)?.handle(&input)? {
         writeln!(std::io::stdout(), "{output}")?;
     }
     Ok(ExitCode::SUCCESS)
