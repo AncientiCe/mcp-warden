@@ -4,6 +4,8 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-12
+
 ### Added
 
 - Gemini CLI support: `mcp-warden install gemini` registers the hook as `BeforeTool`/`AfterTool`
