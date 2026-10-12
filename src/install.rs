@@ -23,6 +23,7 @@ fn client_dir(home: &Path, client: Client) -> PathBuf {
         Client::Codex => ".codex",
         Client::Cursor => ".cursor",
         Client::Gemini => ".gemini",
+        Client::Copilot => ".copilot",
     })
 }
 
@@ -31,6 +32,8 @@ pub fn settings_in(home: &Path, client: Client) -> PathBuf {
     let file = match client {
         Client::ClaudeCode | Client::Gemini => "settings.json",
         Client::Codex | Client::Cursor => "hooks.json",
+        // Copilot reads every file in its hooks directory; warden owns one.
+        Client::Copilot => "hooks/mcp-warden.json",
     };
     client_dir(home, client).join(file)
 }
@@ -48,7 +51,7 @@ pub fn all_clients(home: &Path, executable: &Path, install: bool) -> Result<Valu
     }
     if reports.is_empty() {
         bail!(
-            "no supported agent client found in {} (looked for .claude, .codex, .cursor and .gemini)",
+            "no supported agent client found in {} (looked for .claude, .codex, .cursor, .gemini and .copilot)",
             home.display()
         );
     }
@@ -98,6 +101,7 @@ pub fn hook_settings(
         .context("hook settings must be a JSON object")?;
     match client {
         Client::Cursor => edit_cursor(root, &command, install)?,
+        Client::Copilot => edit_copilot(root, &command, install)?,
         // Gemini CLI names its events differently and counts timeouts in milliseconds.
         Client::Gemini => edit_grouped(
             root,
@@ -207,6 +211,32 @@ fn edit_cursor(root: &mut Map<String, Value>, command: &str, install: bool) -> R
     Ok(())
 }
 
+/// Copilot CLI: `{version: 1, hooks: {event: [{type, command, timeoutSec}]}}`;
+/// leaving out the matcher sends every tool to the hook.
+fn edit_copilot(root: &mut Map<String, Value>, command: &str, install: bool) -> Result<()> {
+    if install {
+        root.entry("version").or_insert(json!(1));
+    }
+    let hooks = hooks_object(root)?;
+    for event in ["preToolUse", "postToolUse"] {
+        let entries = hooks
+            .entry(event)
+            .or_insert_with(|| Value::Array(Vec::new()))
+            .as_array_mut()
+            .context("hook event entries must be an array")?;
+        entries.retain(|hook| !is_warden(hook));
+        if install {
+            entries.push(
+                json!({"type": "command", "command": command, "timeoutSec": TIMEOUT_SECONDS}),
+            );
+        }
+        if entries.is_empty() {
+            hooks.remove(event);
+        }
+    }
+    Ok(())
+}
+
 /// Quoted, with forward slashes, so it survives both cmd and POSIX shells.
 fn hook_command(executable: &Path, client: Client) -> String {
     let path = executable.to_string_lossy().replace('\\', "/");
@@ -215,6 +245,7 @@ fn hook_command(executable: &Path, client: Client) -> String {
         Client::Codex => format!("\"{path}\" hook --client codex"),
         Client::Cursor => format!("\"{path}\" hook --client cursor"),
         Client::Gemini => format!("\"{path}\" hook --client gemini"),
+        Client::Copilot => format!("\"{path}\" hook --client copilot"),
     }
 }
 

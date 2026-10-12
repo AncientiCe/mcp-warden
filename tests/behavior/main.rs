@@ -2,6 +2,7 @@
 //! outside (see AGENTS.md §1).
 
 mod codex;
+mod copilot;
 mod corpus;
 mod cursor;
 mod gemini;

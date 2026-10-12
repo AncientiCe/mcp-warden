@@ -70,14 +70,16 @@ pub enum Client {
     Codex,
     Cursor,
     Gemini,
+    Copilot,
 }
 
 impl Client {
-    pub const ALL: [Client; 4] = [
+    pub const ALL: [Client; 5] = [
         Client::ClaudeCode,
         Client::Codex,
         Client::Cursor,
         Client::Gemini,
+        Client::Copilot,
     ];
 
     pub fn name(self) -> &'static str {
@@ -86,6 +88,7 @@ impl Client {
             Client::Codex => "codex",
             Client::Cursor => "cursor",
             Client::Gemini => "gemini",
+            Client::Copilot => "copilot",
         }
     }
 }
@@ -119,6 +122,7 @@ impl Hook {
         match self.client {
             Client::Cursor => event = from_cursor(event),
             Client::Gemini => event = from_gemini(event),
+            Client::Copilot => event = from_copilot(event),
             Client::ClaudeCode | Client::Codex => {}
         }
         match event["hook_event_name"].as_str() {
@@ -152,6 +156,12 @@ impl Hook {
         }
         if self.client == Client::Gemini {
             return Some(json!({"decision": "deny", "reason": reason}));
+        }
+        if self.client == Client::Copilot {
+            return Some(json!({
+                "permissionDecision": "deny",
+                "permissionDecisionReason": reason,
+            }));
         }
         Some(json!({
             "hookSpecificOutput": {
@@ -227,6 +237,21 @@ impl Hook {
         }
         if message.is_none() && !changed {
             return Ok(None);
+        }
+        if self.client == Client::Copilot {
+            let mut output = json!({});
+            if let Some(message) = message {
+                output["additionalContext"] = json!(message);
+            }
+            if changed {
+                let text = match response {
+                    Value::String(text) => text,
+                    other => other.to_string(),
+                };
+                output["modifiedResult"] =
+                    json!({"resultType": "success", "textResultForLlm": text});
+            }
+            return Ok(Some(output));
         }
         let mut output = json!({ "hookEventName": "PostToolUse" });
         if let Some(message) = message {
@@ -399,6 +424,65 @@ fn from_gemini(mut event: Value) -> Value {
     event
 }
 
+/// Copilot CLI's own tools; any other tool comes from an MCP server.
+const COPILOT_BUILTINS: &[&str] = &[
+    "bash",
+    "powershell",
+    "read_bash",
+    "write_bash",
+    "stop_bash",
+    "list_bash",
+    "read_powershell",
+    "write_powershell",
+    "stop_powershell",
+    "list_powershell",
+    "view",
+    "create",
+    "edit",
+    "str_replace",
+    "insert",
+    "grep",
+    "glob",
+    "web_fetch",
+    "task",
+    "think",
+    "report_intent",
+    "update_todo",
+    "fetch_copilot_cli_documentation",
+];
+
+/// Rewrites a Copilot CLI hook event into the shape the rest of the hook expects.
+fn from_copilot(event: Value) -> Value {
+    // Copilot does not name the event; only results carry `toolResult`.
+    let (name, response) = match event.get("toolResult") {
+        Some(result) => ("PostToolUse", result["textResultForLlm"].clone()),
+        None => ("PreToolUse", Value::Null),
+    };
+    let tool = event["toolName"].as_str().unwrap_or("");
+    // Arguments arrive as an object or as a JSON string.
+    let input = match event["toolArgs"]
+        .as_str()
+        .map(serde_json::from_str::<Value>)
+    {
+        Some(Ok(parsed)) if parsed.is_object() => parsed,
+        _ => event["toolArgs"].clone(),
+    };
+    let mut normalized = json!({
+        "hook_event_name": name,
+        "cwd": event["cwd"],
+        "tool_name": tool,
+        "tool_input": input,
+        "tool_response": response,
+    });
+    // Copilot names MCP tools `server-tool`; server names hold hyphens and
+    // tool names underscores, so the server ends at the last hyphen.
+    if !tool.is_empty() && !COPILOT_BUILTINS.contains(&tool) {
+        let server = tool.rsplit_once('-').map_or(tool, |(server, _)| server);
+        normalized["mcp_context"] = json!({"server_name": server});
+    }
+    normalized
+}
+
 /// The MCP server behind a tool call.
 enum McpServer<'a> {
     Named(&'a str),
@@ -428,7 +512,7 @@ const WEB_TOOLS: [&str; 4] = ["WebFetch", "WebSearch", "web_fetch", "google_web_
 
 fn bash_command(event: &Value) -> Option<&str> {
     match event["tool_name"].as_str() {
-        Some("Bash" | "PowerShell" | "run_shell_command") => {
+        Some("Bash" | "PowerShell" | "run_shell_command" | "bash" | "powershell") => {
             event["tool_input"]["command"].as_str()
         }
         _ => None,

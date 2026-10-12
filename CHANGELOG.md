@@ -10,6 +10,9 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
   in `~/.gemini/settings.json`. A flagged result is denied and replaced by the quarantine notice,
   as with Codex. MCP tools are judged by the server named in `mcp_context`, and `web_fetch`,
   `google_web_search` and outside `run_shell_command` output count as outside content.
+- GitHub Copilot CLI support: `mcp-warden install copilot` writes
+  `~/.copilot/hooks/mcp-warden.json` for every tool. Cleaned text replaces the result the model
+  sees (`modifiedResult`), and `toolArgs` are read whether sent as an object or a JSON string.
 
 ## [0.3.6] - 2026-10-11
 
