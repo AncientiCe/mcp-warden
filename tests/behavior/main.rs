@@ -12,4 +12,5 @@ mod hook;
 mod install;
 mod project_trust;
 mod proxy;
+mod qwen;
 mod scan;

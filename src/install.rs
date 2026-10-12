@@ -25,13 +25,14 @@ fn client_dir(home: &Path, client: Client) -> PathBuf {
         Client::Gemini => ".gemini",
         Client::Copilot => ".copilot",
         Client::Factory => ".factory",
+        Client::Qwen => ".qwen",
     })
 }
 
 /// The user-wide hook settings of `client` under `home`.
 pub fn settings_in(home: &Path, client: Client) -> PathBuf {
     let file = match client {
-        Client::ClaudeCode | Client::Gemini => "settings.json",
+        Client::ClaudeCode | Client::Gemini | Client::Qwen => "settings.json",
         Client::Codex | Client::Cursor | Client::Factory => "hooks.json",
         // Copilot reads every file in its hooks directory; warden owns one.
         Client::Copilot => "hooks/mcp-warden.json",
@@ -52,7 +53,7 @@ pub fn all_clients(home: &Path, executable: &Path, install: bool) -> Result<Valu
     }
     if reports.is_empty() {
         bail!(
-            "no supported agent client found in {} (looked for .claude, .codex, .cursor, .gemini, .copilot and .factory)",
+            "no supported agent client found in {} (looked for .claude, .codex, .cursor, .gemini, .copilot, .factory and .qwen)",
             home.display()
         );
     }
@@ -111,7 +112,7 @@ pub fn hook_settings(
             ["BeforeTool", "AfterTool"],
             TIMEOUT_SECONDS * 1000,
         )?,
-        Client::ClaudeCode | Client::Codex => edit_grouped(
+        Client::ClaudeCode | Client::Codex | Client::Qwen => edit_grouped(
             hooks_object(root)?,
             &command,
             install,
@@ -158,7 +159,7 @@ fn hooks_object(root: &mut Map<String, Value>) -> Result<&mut Map<String, Value>
         .context("settings `hooks` must be an object")
 }
 
-/// Claude Code, Codex, Gemini CLI and Factory Droid: `hooks.EVENT[] = {matcher, hooks: [{type, command, timeout}]}`.
+/// Claude Code, Codex, Gemini CLI, Factory Droid and Qwen Code: `hooks.EVENT[] = {matcher, hooks: [{type, command, timeout}]}`.
 fn edit_grouped(
     hooks: &mut Map<String, Value>,
     command: &str,
@@ -255,6 +256,7 @@ fn hook_command(executable: &Path, client: Client) -> String {
         Client::Gemini => format!("\"{path}\" hook --client gemini"),
         Client::Copilot => format!("\"{path}\" hook --client copilot"),
         Client::Factory => format!("\"{path}\" hook --client factory"),
+        Client::Qwen => format!("\"{path}\" hook --client qwen"),
     }
 }
 

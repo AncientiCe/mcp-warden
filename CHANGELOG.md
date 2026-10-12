@@ -21,6 +21,8 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 - Factory Droid support: `mcp-warden install factory` registers the hook in
   `~/.factory/hooks.json`. Flagged results are blocked with the quarantine notice; `Execute` and
   `FetchUrl` count as shell and web tools.
+- Qwen Code support: `mcp-warden install qwen` registers the hook in `~/.qwen/settings.json`.
+  Flagged results are blocked with the quarantine notice.
 
 ## [0.3.6] - 2026-10-11
 

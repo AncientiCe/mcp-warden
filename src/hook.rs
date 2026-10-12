@@ -72,16 +72,18 @@ pub enum Client {
     Gemini,
     Copilot,
     Factory,
+    Qwen,
 }
 
 impl Client {
-    pub const ALL: [Client; 6] = [
+    pub const ALL: [Client; 7] = [
         Client::ClaudeCode,
         Client::Codex,
         Client::Cursor,
         Client::Gemini,
         Client::Copilot,
         Client::Factory,
+        Client::Qwen,
     ];
 
     pub fn name(self) -> &'static str {
@@ -92,6 +94,7 @@ impl Client {
             Client::Gemini => "gemini",
             Client::Copilot => "copilot",
             Client::Factory => "factory",
+            Client::Qwen => "qwen",
         }
     }
 }
@@ -131,8 +134,8 @@ impl Hook {
             // style events and, like Codex, cannot swap in cleaned output.
             Client::Copilot if event.get("hook_event_name").is_some() => format = Client::Codex,
             Client::Copilot => event = from_copilot(event),
-            // Factory sends Claude Code events and, like Codex, cannot swap in output.
-            Client::Factory => format = Client::Codex,
+            // These send Claude Code events and, like Codex, cannot swap in output.
+            Client::Factory | Client::Qwen => format = Client::Codex,
             Client::ClaudeCode | Client::Codex => {}
         }
         match event["hook_event_name"].as_str() {
