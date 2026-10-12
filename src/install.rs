@@ -26,13 +26,14 @@ fn client_dir(home: &Path, client: Client) -> PathBuf {
         Client::Copilot => ".copilot",
         Client::Factory => ".factory",
         Client::Qwen => ".qwen",
+        Client::Augment => ".augment",
     })
 }
 
 /// The user-wide hook settings of `client` under `home`.
 pub fn settings_in(home: &Path, client: Client) -> PathBuf {
     let file = match client {
-        Client::ClaudeCode | Client::Gemini | Client::Qwen => "settings.json",
+        Client::ClaudeCode | Client::Gemini | Client::Qwen | Client::Augment => "settings.json",
         Client::Codex | Client::Cursor | Client::Factory => "hooks.json",
         // Copilot reads every file in its hooks directory; warden owns one.
         Client::Copilot => "hooks/mcp-warden.json",
@@ -53,7 +54,7 @@ pub fn all_clients(home: &Path, executable: &Path, install: bool) -> Result<Valu
     }
     if reports.is_empty() {
         bail!(
-            "no supported agent client found in {} (looked for .claude, .codex, .cursor, .gemini, .copilot, .factory and .qwen)",
+            "no supported agent client found in {} (looked for .claude, .codex, .cursor, .gemini, .copilot, .factory, .qwen and .augment)",
             home.display()
         );
     }
@@ -107,26 +108,35 @@ pub fn hook_settings(
         // Gemini CLI names its events differently and counts timeouts in milliseconds.
         Client::Gemini => edit_grouped(
             hooks_object(root)?,
-            &command,
             install,
             ["BeforeTool", "AfterTool"],
-            TIMEOUT_SECONDS * 1000,
+            &group("*", &command, TIMEOUT_SECONDS * 1000),
         )?,
         Client::ClaudeCode | Client::Codex | Client::Qwen => edit_grouped(
             hooks_object(root)?,
-            &command,
             install,
             ["PreToolUse", "PostToolUse"],
-            TIMEOUT_SECONDS,
+            &group("*", &command, TIMEOUT_SECONDS),
         )?,
         // Factory's hooks file holds the events at the top level.
         Client::Factory => edit_grouped(
             root,
-            &command,
             install,
             ["PreToolUse", "PostToolUse"],
-            TIMEOUT_SECONDS,
+            &group("*", &command, TIMEOUT_SECONDS),
         )?,
+        // Augment matches by regex, counts milliseconds, and names an MCP
+        // tool's server only when asked to.
+        Client::Augment => {
+            let mut group = group(".*", &command, TIMEOUT_SECONDS * 1000);
+            group["metadata"] = json!({"includeMCPMetadata": true});
+            edit_grouped(
+                hooks_object(root)?,
+                install,
+                ["PreToolUse", "PostToolUse"],
+                &group,
+            )?
+        }
     }
     if root
         .get("hooks")
@@ -159,13 +169,12 @@ fn hooks_object(root: &mut Map<String, Value>) -> Result<&mut Map<String, Value>
         .context("settings `hooks` must be an object")
 }
 
-/// Claude Code, Codex, Gemini CLI, Factory Droid and Qwen Code: `hooks.EVENT[] = {matcher, hooks: [{type, command, timeout}]}`.
+/// Claude Code, Codex, Gemini CLI, Factory Droid, Qwen Code and Augment: `hooks.EVENT[] = {matcher, hooks: [{type, command, timeout}]}`.
 fn edit_grouped(
     hooks: &mut Map<String, Value>,
-    command: &str,
     install: bool,
     events: [&str; 2],
-    timeout: u64,
+    group: &Value,
 ) -> Result<()> {
     for event in events {
         let groups = hooks
@@ -185,16 +194,21 @@ fn edit_grouped(
                 .is_none_or(|entries| !entries.is_empty())
         });
         if install {
-            groups.push(json!({
-                "matcher": "*",
-                "hooks": [{"type": "command", "command": command, "timeout": timeout}],
-            }));
+            groups.push(group.clone());
         }
         if groups.is_empty() {
             hooks.remove(event);
         }
     }
     Ok(())
+}
+
+/// One matcher group running warden's hook.
+fn group(matcher: &str, command: &str, timeout: u64) -> Value {
+    json!({
+        "matcher": matcher,
+        "hooks": [{"type": "command", "command": command, "timeout": timeout}],
+    })
 }
 
 /// Cursor: `{version: 1, hooks: {event: [{command, matcher?, timeout?}]}}`.
@@ -257,6 +271,7 @@ fn hook_command(executable: &Path, client: Client) -> String {
         Client::Copilot => format!("\"{path}\" hook --client copilot"),
         Client::Factory => format!("\"{path}\" hook --client factory"),
         Client::Qwen => format!("\"{path}\" hook --client qwen"),
+        Client::Augment => format!("\"{path}\" hook --client augment"),
     }
 }
 

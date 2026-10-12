@@ -73,10 +73,11 @@ pub enum Client {
     Copilot,
     Factory,
     Qwen,
+    Augment,
 }
 
 impl Client {
-    pub const ALL: [Client; 7] = [
+    pub const ALL: [Client; 8] = [
         Client::ClaudeCode,
         Client::Codex,
         Client::Cursor,
@@ -84,6 +85,7 @@ impl Client {
         Client::Copilot,
         Client::Factory,
         Client::Qwen,
+        Client::Augment,
     ];
 
     pub fn name(self) -> &'static str {
@@ -95,6 +97,7 @@ impl Client {
             Client::Copilot => "copilot",
             Client::Factory => "factory",
             Client::Qwen => "qwen",
+            Client::Augment => "augment",
         }
     }
 }
@@ -136,6 +139,7 @@ impl Hook {
             Client::Copilot => event = from_copilot(event),
             // These send Claude Code events and, like Codex, cannot swap in output.
             Client::Factory | Client::Qwen => format = Client::Codex,
+            Client::Augment => event = from_augment(event),
             Client::ClaudeCode | Client::Codex => {}
         }
         match event["hook_event_name"].as_str() {
@@ -216,8 +220,12 @@ impl Hook {
             self.quarantine
                 .save(&id, tool, &event["tool_input"], &findings, withheld)?;
         }
-        // Cursor can replace MCP output only; other results stay as they are.
-        let replaceable = format != Client::Cursor || tool.starts_with("MCP:");
+        // Cursor can replace MCP output only, Augment nothing; other results stay as they are.
+        let replaceable = match format {
+            Client::Cursor => tool.starts_with("MCP:"),
+            Client::Augment => false,
+            _ => true,
+        };
         let message = context(
             tool,
             &findings,
@@ -247,6 +255,14 @@ impl Hook {
                 "block"
             };
             return Ok(message.map(|reason| json!({"decision": decision, "reason": reason})));
+        }
+        if format == Client::Augment {
+            return Ok(message.map(|message| {
+                json!({"hookSpecificOutput": {
+                    "hookEventName": "PostToolUse",
+                    "additionalContext": message,
+                }})
+            }));
         }
         if message.is_none() && !changed {
             return Ok(None);
@@ -500,6 +516,28 @@ fn from_copilot(event: Value) -> Value {
     normalized
 }
 
+/// Rewrites an Augment hook event into the shape the rest of the hook expects.
+fn from_augment(mut event: Value) -> Value {
+    event["tool_response"] = event["tool_output"].take();
+    if event["cwd"].is_null() {
+        event["cwd"] = event["workspace_roots"][0].clone();
+    }
+    if event["is_mcp_tool"] == true {
+        // Augment names MCP tools `tool_server`; the metadata names the server outright.
+        let server = match event["mcp_metadata"]["mcpExecutedToolServerName"].as_str() {
+            Some(server) => server.to_string(),
+            None => {
+                let tool = event["tool_name"].as_str().unwrap_or("");
+                tool.rsplit_once('_')
+                    .map_or(tool, |(_, server)| server)
+                    .to_string()
+            }
+        };
+        event["mcp_context"] = json!({"server_name": server});
+    }
+    event
+}
+
 /// The MCP server behind a tool call.
 enum McpServer<'a> {
     Named(&'a str),
@@ -530,7 +568,7 @@ fn mcp_server(event: &Value) -> Option<McpServer<'_>> {
 const PATH_KEYS: [&str; 4] = ["file_path", "path", "notebook_path", "absolute_path"];
 
 /// Built-in tools that return web content, across clients.
-const WEB_TOOLS: [&str; 7] = [
+const WEB_TOOLS: [&str; 8] = [
     "WebFetch",
     "WebSearch",
     "web_fetch",
@@ -538,13 +576,14 @@ const WEB_TOOLS: [&str; 7] = [
     "fetch_webpage",
     "fetch",
     "FetchUrl",
+    "web-fetch",
 ];
 
 fn bash_command(event: &Value) -> Option<&str> {
     match event["tool_name"].as_str() {
         Some(
             "Bash" | "PowerShell" | "run_shell_command" | "bash" | "powershell" | "run_in_terminal"
-            | "runInTerminal" | "Execute",
+            | "runInTerminal" | "Execute" | "launch-process",
         ) => event["tool_input"]["command"].as_str(),
         _ => None,
     }

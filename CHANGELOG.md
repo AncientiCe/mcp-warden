@@ -23,6 +23,9 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
   `FetchUrl` count as shell and web tools.
 - Qwen Code support: `mcp-warden install qwen` registers the hook in `~/.qwen/settings.json`.
   Flagged results are blocked with the quarantine notice.
+- Augment (Auggie) support: `mcp-warden install augment` registers the hook in
+  `~/.augment/settings.json` with MCP metadata turned on. Augment hooks cannot replace or block
+  a result, so the agent is told to treat flagged output as data and to tell the user.
 
 ## [0.3.6] - 2026-10-11
 
