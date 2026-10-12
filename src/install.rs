@@ -22,13 +22,14 @@ fn client_dir(home: &Path, client: Client) -> PathBuf {
         Client::ClaudeCode => ".claude",
         Client::Codex => ".codex",
         Client::Cursor => ".cursor",
+        Client::Gemini => ".gemini",
     })
 }
 
 /// The user-wide hook settings of `client` under `home`.
 pub fn settings_in(home: &Path, client: Client) -> PathBuf {
     let file = match client {
-        Client::ClaudeCode => "settings.json",
+        Client::ClaudeCode | Client::Gemini => "settings.json",
         Client::Codex | Client::Cursor => "hooks.json",
     };
     client_dir(home, client).join(file)
@@ -47,7 +48,7 @@ pub fn all_clients(home: &Path, executable: &Path, install: bool) -> Result<Valu
     }
     if reports.is_empty() {
         bail!(
-            "no supported agent client found in {} (looked for .claude, .codex and .cursor)",
+            "no supported agent client found in {} (looked for .claude, .codex, .cursor and .gemini)",
             home.display()
         );
     }
@@ -95,10 +96,23 @@ pub fn hook_settings(
     let root = after
         .as_object_mut()
         .context("hook settings must be a JSON object")?;
-    if client == Client::Cursor {
-        edit_cursor(root, &command, install)?;
-    } else {
-        edit_grouped(root, &command, install)?;
+    match client {
+        Client::Cursor => edit_cursor(root, &command, install)?,
+        // Gemini CLI names its events differently and counts timeouts in milliseconds.
+        Client::Gemini => edit_grouped(
+            root,
+            &command,
+            install,
+            ["BeforeTool", "AfterTool"],
+            TIMEOUT_SECONDS * 1000,
+        )?,
+        Client::ClaudeCode | Client::Codex => edit_grouped(
+            root,
+            &command,
+            install,
+            ["PreToolUse", "PostToolUse"],
+            TIMEOUT_SECONDS,
+        )?,
     }
     if root
         .get("hooks")
@@ -131,10 +145,16 @@ fn hooks_object(root: &mut Map<String, Value>) -> Result<&mut Map<String, Value>
         .context("settings `hooks` must be an object")
 }
 
-/// Claude Code and Codex: `hooks.EVENT[] = {matcher, hooks: [{type, command, timeout}]}`.
-fn edit_grouped(root: &mut Map<String, Value>, command: &str, install: bool) -> Result<()> {
+/// Claude Code, Codex and Gemini CLI: `hooks.EVENT[] = {matcher, hooks: [{type, command, timeout}]}`.
+fn edit_grouped(
+    root: &mut Map<String, Value>,
+    command: &str,
+    install: bool,
+    events: [&str; 2],
+    timeout: u64,
+) -> Result<()> {
     let hooks = hooks_object(root)?;
-    for event in ["PreToolUse", "PostToolUse"] {
+    for event in events {
         let groups = hooks
             .entry(event)
             .or_insert_with(|| Value::Array(Vec::new()))
@@ -154,7 +174,7 @@ fn edit_grouped(root: &mut Map<String, Value>, command: &str, install: bool) -> 
         if install {
             groups.push(json!({
                 "matcher": "*",
-                "hooks": [{"type": "command", "command": command, "timeout": TIMEOUT_SECONDS}],
+                "hooks": [{"type": "command", "command": command, "timeout": timeout}],
             }));
         }
         if groups.is_empty() {
@@ -194,6 +214,7 @@ fn hook_command(executable: &Path, client: Client) -> String {
         Client::ClaudeCode => format!("\"{path}\" hook"),
         Client::Codex => format!("\"{path}\" hook --client codex"),
         Client::Cursor => format!("\"{path}\" hook --client cursor"),
+        Client::Gemini => format!("\"{path}\" hook --client gemini"),
     }
 }
 

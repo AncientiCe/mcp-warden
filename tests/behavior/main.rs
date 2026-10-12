@@ -4,6 +4,7 @@
 mod codex;
 mod corpus;
 mod cursor;
+mod gemini;
 mod harness;
 mod hook;
 mod install;

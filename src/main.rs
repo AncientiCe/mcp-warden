@@ -107,7 +107,7 @@ struct ClientArgs {
     /// Agent client to configure [default: every supported client found].
     #[arg(value_enum)]
     client: Option<Client>,
-    /// Hook settings file [default: ~/.claude/settings.json, ~/.codex/hooks.json or ~/.cursor/hooks.json].
+    /// Hook settings file [default: ~/.claude/settings.json, ~/.codex/hooks.json, ~/.cursor/hooks.json or ~/.gemini/settings.json].
     #[arg(long, requires = "client")]
     settings: Option<PathBuf>,
     /// Home directory to look for clients in [default: your home directory].
@@ -145,7 +145,7 @@ enum Command {
         #[command(flatten)]
         target: ClientArgs,
     },
-    /// Claude Code hook: reads one hook event on stdin and checks tool results from any source.
+    /// Agent hook: reads one hook event on stdin and checks tool results from any source.
     Hook {
         /// Agent client sending the event.
         #[arg(long, value_enum, default_value = "claude-code")]

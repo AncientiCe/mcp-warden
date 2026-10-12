@@ -8,7 +8,7 @@
   <a href="#license"><img alt="License: MIT or Apache-2.0" src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue"></a>
   <img alt="Platforms: Linux, macOS, Windows" src="https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational">
   <img alt="Written in Rust, edition 2024" src="https://img.shields.io/badge/rust-2024%20edition-orange?logo=rust">
-  <img alt="Works with Claude Code, Codex and Cursor" src="https://img.shields.io/badge/works%20with-Claude%20Code%20%7C%20Codex%20%7C%20Cursor-8A2BE2">
+  <img alt="Works with Claude Code, Codex, Cursor and Gemini CLI" src="https://img.shields.io/badge/works%20with-Claude%20Code%20%7C%20Codex%20%7C%20Cursor%20%7C%20Gemini%20CLI-8A2BE2">
 </p>
 
 <p align="center">
@@ -56,7 +56,7 @@ brew install ancientice/mcp-warden/mcp-warden
 # 2. Register the hook in every supported agent client it finds
 mcp-warden install
 
-# 3. Restart Claude Code / Codex / Cursor
+# 3. Restart Claude Code / Codex / Cursor / Gemini CLI
 ```
 
 That's it. Every tool result (MCP, web, shell, file reads in cloned repos) is now checked
@@ -113,7 +113,7 @@ flowchart LR
         Q[("Quarantine<br/>+ audit log")]
     end
 
-    AGENT["🤖 Agent<br/>Claude Code · Codex · Cursor"]
+    AGENT["🤖 Agent<br/>Claude Code · Codex · Cursor · Gemini CLI"]
     YOU["🧑 You"]
 
     GH --> PROXY
@@ -133,7 +133,7 @@ flowchart LR
 | --- | --- | --- |
 | Set up with | `mcp-warden install` | `mcp-warden wrap config.json` or a manual config entry |
 | Covers | **Every** tool: MCP, WebFetch, WebSearch, Bash, file reads in cloned repos | One stdio MCP server per wrap |
-| Clients | Claude Code, Codex, Cursor | Any MCP client that launches stdio servers |
+| Clients | Claude Code, Codex, Cursor, Gemini CLI | Any MCP client that launches stdio servers |
 | Suspicious content | Withheld per field and quarantined for your review | Sanitized; optionally labeled, scored and withheld (`--detect`) |
 | Action gating | None: no taint, no extra prompts | Optional shared taint (`--enforce`) with single-use approvals |
 | Tool pinning | No | Optional (`--pin-tools`) |
@@ -143,7 +143,7 @@ flowchart LR
 
 ```bash
 mcp-warden install                 # every supported client found
-mcp-warden install claude-code     # or: codex, cursor
+mcp-warden install claude-code     # or: codex, cursor, gemini
 mcp-warden install --settings ./.claude/settings.json   # a project's file instead
 mcp-warden uninstall               # removes only warden's entries
 ```
@@ -155,6 +155,7 @@ This registers `mcp-warden hook` once for every tool in each supported client it
 | Claude Code | `~/.claude/settings.json` | Cleaned output replaces the original per field. |
 | Codex | `~/.codex/hooks.json` | Codex cannot swap in cleaned output, so a flagged result is replaced by the quarantine notice as a whole. Codex asks once, via `/hooks`, to trust the hook. |
 | Cursor | `~/.cursor/hooks.json` | Cursor can replace MCP output only; for Shell and Read results the agent is told to treat the flagged output as data and tell you. |
+| Gemini CLI | `~/.gemini/settings.json` | Like Codex, a flagged result is replaced by the quarantine notice as a whole. MCP tools are checked per server via `mcp_context`. |
 
 An exact backup of any existing file is written first. Nothing has to be configured per MCP
 server. Restart the clients to load the hook.

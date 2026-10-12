@@ -69,16 +69,23 @@ pub enum Client {
     ClaudeCode,
     Codex,
     Cursor,
+    Gemini,
 }
 
 impl Client {
-    pub const ALL: [Client; 3] = [Client::ClaudeCode, Client::Codex, Client::Cursor];
+    pub const ALL: [Client; 4] = [
+        Client::ClaudeCode,
+        Client::Codex,
+        Client::Cursor,
+        Client::Gemini,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
             Client::ClaudeCode => "claude-code",
             Client::Codex => "codex",
             Client::Cursor => "cursor",
+            Client::Gemini => "gemini",
         }
     }
 }
@@ -109,8 +116,10 @@ impl Hook {
     /// Handles one hook event. Returns the JSON to print, if any.
     pub fn handle(&self, input: &[u8]) -> Result<Option<Value>> {
         let mut event: Value = serde_json::from_slice(input).context("hook input is not JSON")?;
-        if self.client == Client::Cursor {
-            event = from_cursor(event);
+        match self.client {
+            Client::Cursor => event = from_cursor(event),
+            Client::Gemini => event = from_gemini(event),
+            Client::ClaudeCode | Client::Codex => {}
         }
         match event["hook_event_name"].as_str() {
             Some("PostToolUse") => self.post_tool_use(&event),
@@ -126,7 +135,7 @@ impl Hook {
         let command = bash_command(event).is_some_and(|c| {
             self.user_only_command.is_match(c) || self.quarantine_path.is_match(c)
         });
-        let path = ["file_path", "path", "notebook_path"]
+        let path = PATH_KEYS
             .iter()
             .filter_map(|key| input[key].as_str())
             .any(|p| self.quarantine_path.is_match(p));
@@ -140,6 +149,9 @@ impl Hook {
                 "user_message": reason,
                 "agent_message": reason,
             }));
+        }
+        if self.client == Client::Gemini {
+            return Some(json!({"decision": "deny", "reason": reason}));
         }
         Some(json!({
             "hookSpecificOutput": {
@@ -157,7 +169,7 @@ impl Hook {
             // A failed clone leaves no directory, and nothing to mark.
             let _ = self.projects.set(&cwd.join(dir), true);
         }
-        let Some(origin) = self.origin(tool, &event["tool_input"], cwd)? else {
+        let Some(origin) = self.origin(event, cwd)? else {
             return Ok(None);
         };
         let id = Quarantine::new_id()?;
@@ -203,10 +215,15 @@ impl Hook {
             }
             return Ok(Some(output));
         }
-        if self.client == Client::Codex {
-            // Codex cannot swap in cleaned output: anything worth a message
+        if matches!(self.client, Client::Codex | Client::Gemini) {
+            // Neither can swap in cleaned output: anything worth a message
             // replaces the result; ordinary markup passes as it is.
-            return Ok(message.map(|reason| json!({"decision": "block", "reason": reason})));
+            let decision = if self.client == Client::Gemini {
+                "deny"
+            } else {
+                "block"
+            };
+            return Ok(message.map(|reason| json!({"decision": decision, "reason": reason})));
         }
         if message.is_none() && !changed {
             return Ok(None);
@@ -222,10 +239,11 @@ impl Hook {
     }
 
     /// Where a tool result came from, or `None` for the user's own project.
-    fn origin(&self, tool: &str, input: &Value, cwd: &Path) -> Result<Option<Origin>> {
-        let path = ["file_path", "path", "notebook_path"]
+    fn origin(&self, event: &Value, cwd: &Path) -> Result<Option<Origin>> {
+        let tool = event["tool_name"].as_str().unwrap_or("");
+        let path = PATH_KEYS
             .iter()
-            .find_map(|key| input[key].as_str());
+            .find_map(|key| event["tool_input"][key].as_str());
         let cloned = match self.projects.suspicious_root(cwd)? {
             Some(root) => Some(root),
             None => match path {
@@ -236,26 +254,17 @@ impl Hook {
         if let Some(root) = cloned {
             return Ok(Some(Origin::Cloned(root)));
         }
-        // Cursor does not name the server behind an MCP tool, so treat them all as outside.
-        let outside = if tool.starts_with("MCP:") {
-            true
-        } else if let Some(rest) = tool.strip_prefix("mcp__") {
-            let server = rest.split("__").next().unwrap_or(rest);
-            match TrustMap::load(None, server)?.default_trust {
+        let outside = match mcp_server(event) {
+            Some(McpServer::Named(server)) => match TrustMap::load(None, server)?.default_trust {
                 Some(trust) => trust == Trust::Untrusted,
                 None => {
                     let name = server.to_ascii_lowercase();
                     PUBLIC_SERVERS.iter().any(|s| name.contains(s))
                 }
-            }
-        } else {
-            match tool {
-                "WebFetch" | "WebSearch" => true,
-                "Bash" | "PowerShell" => input["command"]
-                    .as_str()
-                    .is_some_and(|c| self.external_command.is_match(c)),
-                _ => false,
-            }
+            },
+            Some(McpServer::Unnamed) => true,
+            None if WEB_TOOLS.contains(&tool) => true,
+            None => bash_command(event).is_some_and(|c| self.external_command.is_match(c)),
         };
         Ok(outside.then_some(Origin::Outside))
     }
@@ -379,9 +388,49 @@ fn from_cursor(mut event: Value) -> Value {
     event
 }
 
+/// Rewrites a Gemini CLI hook event into the shape the rest of the hook expects.
+fn from_gemini(mut event: Value) -> Value {
+    let name = match event["hook_event_name"].as_str() {
+        Some("AfterTool") => "PostToolUse",
+        Some("BeforeTool") => "PreToolUse",
+        _ => return event,
+    };
+    event["hook_event_name"] = json!(name);
+    event
+}
+
+/// The MCP server behind a tool call.
+enum McpServer<'a> {
+    Named(&'a str),
+    /// The client does not say which server, so the tool counts as outside.
+    Unnamed,
+}
+
+/// The MCP server behind the event's tool, or `None` if it is not an MCP tool.
+fn mcp_server(event: &Value) -> Option<McpServer<'_>> {
+    let tool = event["tool_name"].as_str()?;
+    if let Some(rest) = tool.strip_prefix("mcp__") {
+        return Some(McpServer::Named(rest.split("__").next().unwrap_or(rest)));
+    }
+    if let Some(server) = event["mcp_context"]["server_name"].as_str() {
+        return Some(McpServer::Named(server));
+    }
+    // Cursor's `MCP:tool`, or Gemini's `mcp_server_tool` without its context
+    // (server names may hold underscores, so the name cannot be split).
+    (tool.starts_with("MCP:") || tool.starts_with("mcp_")).then_some(McpServer::Unnamed)
+}
+
+/// Tool input fields that name a file, across clients.
+const PATH_KEYS: [&str; 4] = ["file_path", "path", "notebook_path", "absolute_path"];
+
+/// Built-in tools that return web content, across clients.
+const WEB_TOOLS: [&str; 4] = ["WebFetch", "WebSearch", "web_fetch", "google_web_search"];
+
 fn bash_command(event: &Value) -> Option<&str> {
     match event["tool_name"].as_str() {
-        Some("Bash" | "PowerShell") => event["tool_input"]["command"].as_str(),
+        Some("Bash" | "PowerShell" | "run_shell_command") => {
+            event["tool_input"]["command"].as_str()
+        }
         _ => None,
     }
 }
