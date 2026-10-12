@@ -71,15 +71,17 @@ pub enum Client {
     Cursor,
     Gemini,
     Copilot,
+    Factory,
 }
 
 impl Client {
-    pub const ALL: [Client; 5] = [
+    pub const ALL: [Client; 6] = [
         Client::ClaudeCode,
         Client::Codex,
         Client::Cursor,
         Client::Gemini,
         Client::Copilot,
+        Client::Factory,
     ];
 
     pub fn name(self) -> &'static str {
@@ -89,6 +91,7 @@ impl Client {
             Client::Cursor => "cursor",
             Client::Gemini => "gemini",
             Client::Copilot => "copilot",
+            Client::Factory => "factory",
         }
     }
 }
@@ -128,6 +131,8 @@ impl Hook {
             // style events and, like Codex, cannot swap in cleaned output.
             Client::Copilot if event.get("hook_event_name").is_some() => format = Client::Codex,
             Client::Copilot => event = from_copilot(event),
+            // Factory sends Claude Code events and, like Codex, cannot swap in output.
+            Client::Factory => format = Client::Codex,
             Client::ClaudeCode | Client::Codex => {}
         }
         match event["hook_event_name"].as_str() {
@@ -522,20 +527,21 @@ fn mcp_server(event: &Value) -> Option<McpServer<'_>> {
 const PATH_KEYS: [&str; 4] = ["file_path", "path", "notebook_path", "absolute_path"];
 
 /// Built-in tools that return web content, across clients.
-const WEB_TOOLS: [&str; 6] = [
+const WEB_TOOLS: [&str; 7] = [
     "WebFetch",
     "WebSearch",
     "web_fetch",
     "google_web_search",
     "fetch_webpage",
     "fetch",
+    "FetchUrl",
 ];
 
 fn bash_command(event: &Value) -> Option<&str> {
     match event["tool_name"].as_str() {
         Some(
             "Bash" | "PowerShell" | "run_shell_command" | "bash" | "powershell" | "run_in_terminal"
-            | "runInTerminal",
+            | "runInTerminal" | "Execute",
         ) => event["tool_input"]["command"].as_str(),
         _ => None,
     }

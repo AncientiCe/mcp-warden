@@ -24,6 +24,7 @@ fn client_dir(home: &Path, client: Client) -> PathBuf {
         Client::Cursor => ".cursor",
         Client::Gemini => ".gemini",
         Client::Copilot => ".copilot",
+        Client::Factory => ".factory",
     })
 }
 
@@ -31,7 +32,7 @@ fn client_dir(home: &Path, client: Client) -> PathBuf {
 pub fn settings_in(home: &Path, client: Client) -> PathBuf {
     let file = match client {
         Client::ClaudeCode | Client::Gemini => "settings.json",
-        Client::Codex | Client::Cursor => "hooks.json",
+        Client::Codex | Client::Cursor | Client::Factory => "hooks.json",
         // Copilot reads every file in its hooks directory; warden owns one.
         Client::Copilot => "hooks/mcp-warden.json",
     };
@@ -51,7 +52,7 @@ pub fn all_clients(home: &Path, executable: &Path, install: bool) -> Result<Valu
     }
     if reports.is_empty() {
         bail!(
-            "no supported agent client found in {} (looked for .claude, .codex, .cursor, .gemini and .copilot)",
+            "no supported agent client found in {} (looked for .claude, .codex, .cursor, .gemini, .copilot and .factory)",
             home.display()
         );
     }
@@ -104,13 +105,21 @@ pub fn hook_settings(
         Client::Copilot => edit_copilot(root, &command, install)?,
         // Gemini CLI names its events differently and counts timeouts in milliseconds.
         Client::Gemini => edit_grouped(
-            root,
+            hooks_object(root)?,
             &command,
             install,
             ["BeforeTool", "AfterTool"],
             TIMEOUT_SECONDS * 1000,
         )?,
         Client::ClaudeCode | Client::Codex => edit_grouped(
+            hooks_object(root)?,
+            &command,
+            install,
+            ["PreToolUse", "PostToolUse"],
+            TIMEOUT_SECONDS,
+        )?,
+        // Factory's hooks file holds the events at the top level.
+        Client::Factory => edit_grouped(
             root,
             &command,
             install,
@@ -149,15 +158,14 @@ fn hooks_object(root: &mut Map<String, Value>) -> Result<&mut Map<String, Value>
         .context("settings `hooks` must be an object")
 }
 
-/// Claude Code, Codex and Gemini CLI: `hooks.EVENT[] = {matcher, hooks: [{type, command, timeout}]}`.
+/// Claude Code, Codex, Gemini CLI and Factory Droid: `hooks.EVENT[] = {matcher, hooks: [{type, command, timeout}]}`.
 fn edit_grouped(
-    root: &mut Map<String, Value>,
+    hooks: &mut Map<String, Value>,
     command: &str,
     install: bool,
     events: [&str; 2],
     timeout: u64,
 ) -> Result<()> {
-    let hooks = hooks_object(root)?;
     for event in events {
         let groups = hooks
             .entry(event)
@@ -246,6 +254,7 @@ fn hook_command(executable: &Path, client: Client) -> String {
         Client::Cursor => format!("\"{path}\" hook --client cursor"),
         Client::Gemini => format!("\"{path}\" hook --client gemini"),
         Client::Copilot => format!("\"{path}\" hook --client copilot"),
+        Client::Factory => format!("\"{path}\" hook --client factory"),
     }
 }
 

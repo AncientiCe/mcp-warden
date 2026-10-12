@@ -18,6 +18,9 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
   `fetch_webpage` count as shell and web tools. For `mcp_<server>_<tool>` names without a known
   server, a public server name at the start makes the tool outside content; other servers stay
   quiet.
+- Factory Droid support: `mcp-warden install factory` registers the hook in
+  `~/.factory/hooks.json`. Flagged results are blocked with the quarantine notice; `Execute` and
+  `FetchUrl` count as shell and web tools.
 
 ## [0.3.6] - 2026-10-11
 

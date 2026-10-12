@@ -5,6 +5,7 @@ mod codex;
 mod copilot;
 mod corpus;
 mod cursor;
+mod factory;
 mod gemini;
 mod harness;
 mod hook;

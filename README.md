@@ -8,7 +8,7 @@
   <a href="#license"><img alt="License: MIT or Apache-2.0" src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue"></a>
   <img alt="Platforms: Linux, macOS, Windows" src="https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational">
   <img alt="Written in Rust, edition 2024" src="https://img.shields.io/badge/rust-2024%20edition-orange?logo=rust">
-  <img alt="Works with Claude Code, Codex, Cursor, Gemini CLI and Copilot CLI" src="https://img.shields.io/badge/works%20with-Claude%20Code%20%7C%20Codex%20%7C%20Cursor%20%7C%20Gemini%20CLI%20%7C%20Copilot%20CLI-8A2BE2">
+  <img alt="Works with Claude Code, Codex, Cursor, Gemini CLI, Copilot and Factory Droid" src="https://img.shields.io/badge/works%20with-Claude%20Code%20%7C%20Codex%20%7C%20Cursor%20%7C%20Gemini%20CLI%20%7C%20Copilot%20%7C%20Factory-8A2BE2">
 </p>
 
 <p align="center">
@@ -56,7 +56,7 @@ brew install ancientice/mcp-warden/mcp-warden
 # 2. Register the hook in every supported agent client it finds
 mcp-warden install
 
-# 3. Restart Claude Code / Codex / Cursor / Gemini CLI / Copilot CLI
+# 3. Restart Claude Code / Codex / Cursor / Gemini CLI / Copilot / Factory Droid
 ```
 
 That's it. Every tool result (MCP, web, shell, file reads in cloned repos) is now checked
@@ -113,7 +113,7 @@ flowchart LR
         Q[("Quarantine<br/>+ audit log")]
     end
 
-    AGENT["🤖 Agent<br/>Claude Code · Codex · Cursor · Gemini CLI · Copilot CLI"]
+    AGENT["🤖 Agent<br/>Claude Code · Codex · Cursor · Gemini CLI · Copilot · Droid"]
     YOU["🧑 You"]
 
     GH --> PROXY
@@ -133,7 +133,7 @@ flowchart LR
 | --- | --- | --- |
 | Set up with | `mcp-warden install` | `mcp-warden wrap config.json` or a manual config entry |
 | Covers | **Every** tool: MCP, WebFetch, WebSearch, Bash, file reads in cloned repos | One stdio MCP server per wrap |
-| Clients | Claude Code, Codex, Cursor, Gemini CLI, Copilot CLI | Any MCP client that launches stdio servers |
+| Clients | Claude Code, Codex, Cursor, Gemini CLI, Copilot (CLI and VS Code), Factory Droid | Any MCP client that launches stdio servers |
 | Suspicious content | Withheld per field and quarantined for your review | Sanitized; optionally labeled, scored and withheld (`--detect`) |
 | Action gating | None: no taint, no extra prompts | Optional shared taint (`--enforce`) with single-use approvals |
 | Tool pinning | No | Optional (`--pin-tools`) |
@@ -143,7 +143,7 @@ flowchart LR
 
 ```bash
 mcp-warden install                 # every supported client found
-mcp-warden install claude-code     # or: codex, cursor, gemini, copilot
+mcp-warden install claude-code     # or: codex, cursor, gemini, copilot, factory
 mcp-warden install --settings ./.claude/settings.json   # a project's file instead
 mcp-warden uninstall               # removes only warden's entries
 ```
@@ -157,6 +157,7 @@ This registers `mcp-warden hook` once for every tool in each supported client it
 | Cursor | `~/.cursor/hooks.json` | Cursor can replace MCP output only; for Shell and Read results the agent is told to treat the flagged output as data and tell you. |
 | Gemini CLI | `~/.gemini/settings.json` | Like Codex, a flagged result is replaced by the quarantine notice as a whole. MCP tools are checked per server via `mcp_context`. |
 | Copilot CLI | `~/.copilot/hooks/mcp-warden.json` | Cleaned text replaces the result the model sees. MCP tools are judged by their server name (the part before the last `-`). VS Code's Copilot agent runs the same file but cannot swap in output, so there a flagged result is replaced by the notice, as with Codex. |
+| Factory Droid | `~/.factory/hooks.json` | Like Codex, a flagged result is replaced by the quarantine notice as a whole. |
 
 An exact backup of any existing file is written first. Nothing has to be configured per MCP
 server. Restart the clients to load the hook.
