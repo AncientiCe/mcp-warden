@@ -26,6 +26,8 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 - Augment (Auggie) support: `mcp-warden install augment` registers the hook in
   `~/.augment/settings.json` with MCP metadata turned on. Augment hooks cannot replace or block
   a result, so the agent is told to treat flagged output as data and to tell the user.
+- Windsurf: documented the proxy route (`mcp-warden wrap ~/.codeium/windsurf/mcp_config.json`),
+  since Windsurf hooks cannot act on tool results. A behavior test covers its config format.
 
 ## [0.3.6] - 2026-10-11
 

@@ -164,6 +164,11 @@ This registers `mcp-warden hook` once for every tool in each supported client it
 An exact backup of any existing file is written first. Nothing has to be configured per MCP
 server. Restart the clients to load the hook.
 
+**Windsurf** has no install target: its hooks can neither block, rewrite nor comment on a tool
+result. Wrap its MCP servers with the [proxy](#-wrap-an-mcp-server-proxy) instead:
+`mcp-warden wrap ~/.codeium/windsurf/mcp_config.json`. Remote `serverUrl` entries are left as
+they are.
+
 ### What the hook does
 
 After each tool call, the hook checks the result, whatever produced it: `gh issue view` or `curl`
