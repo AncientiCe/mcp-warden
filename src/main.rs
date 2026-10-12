@@ -8,7 +8,7 @@ use clap::{Args, Parser, Subcommand};
 
 use mcp_warden::audit::Audit;
 use mcp_warden::extract::sanitize_string;
-use mcp_warden::hook::Client;
+use mcp_warden::hook::{Client, Reply};
 use mcp_warden::relay;
 use mcp_warden::sanitize::{Policy, Sanitizer, Trust};
 use mcp_warden::session::Session;
@@ -107,7 +107,7 @@ struct ClientArgs {
     /// Agent client to configure [default: every supported client found].
     #[arg(value_enum)]
     client: Option<Client>,
-    /// Hook settings file [default: ~/.claude/settings.json, ~/.codex/hooks.json, ~/.cursor/hooks.json, ~/.gemini/settings.json, ~/.copilot/hooks/mcp-warden.json, ~/.factory/hooks.json, ~/.qwen/settings.json or ~/.augment/settings.json].
+    /// Hook settings file [default: ~/.claude/settings.json, ~/.codex/hooks.json, ~/.cursor/hooks.json, ~/.gemini/settings.json, ~/.copilot/hooks/mcp-warden.json, ~/.factory/hooks.json, ~/.qwen/settings.json, ~/.augment/settings.json or ~/.kiro/hooks/mcp-warden.json].
     #[arg(long, requires = "client")]
     settings: Option<PathBuf>,
     /// Home directory to look for clients in [default: your home directory].
@@ -316,8 +316,14 @@ fn hook(client: Client) -> Result<ExitCode> {
     std::io::stdin()
         .read_to_end(&mut input)
         .context("reading hook input")?;
-    if let Some(output) = mcp_warden::hook::Hook::new(client)?.handle(&input)? {
-        writeln!(std::io::stdout(), "{output}")?;
+    match mcp_warden::hook::Hook::new(client)?.handle(&input)? {
+        Some(Reply::Json(output)) => writeln!(std::io::stdout(), "{output}")?,
+        Some(Reply::Context(text)) => writeln!(std::io::stdout(), "{text}")?,
+        Some(Reply::Block(reason)) => {
+            eprintln!("{reason}");
+            return Ok(ExitCode::from(2));
+        }
+        None => {}
     }
     Ok(ExitCode::SUCCESS)
 }

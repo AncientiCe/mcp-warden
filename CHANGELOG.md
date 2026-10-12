@@ -26,6 +26,10 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 - Augment (Auggie) support: `mcp-warden install augment` registers the hook in
   `~/.augment/settings.json` with MCP metadata turned on. Augment hooks cannot replace or block
   a result, so the agent is told to treat flagged output as data and to tell the user.
+- Kiro support: `mcp-warden install kiro` writes `~/.kiro/hooks/mcp-warden.json`. Kiro hooks reply
+  in plain text, so a flagged result stays and the agent is told to treat it as data; refused
+  calls exit with code 2 and the reason on stderr. `execute_bash`, `web_fetch` and `web_search`
+  are recognised, and CLI 2.x camelCase event names are accepted.
 - Windsurf: documented the proxy route (`mcp-warden wrap ~/.codeium/windsurf/mcp_config.json`),
   since Windsurf hooks cannot act on tool results. A behavior test covers its config format.
 

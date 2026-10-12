@@ -74,10 +74,11 @@ pub enum Client {
     Factory,
     Qwen,
     Augment,
+    Kiro,
 }
 
 impl Client {
-    pub const ALL: [Client; 8] = [
+    pub const ALL: [Client; 9] = [
         Client::ClaudeCode,
         Client::Codex,
         Client::Cursor,
@@ -86,6 +87,7 @@ impl Client {
         Client::Factory,
         Client::Qwen,
         Client::Augment,
+        Client::Kiro,
     ];
 
     pub fn name(self) -> &'static str {
@@ -98,6 +100,7 @@ impl Client {
             Client::Factory => "factory",
             Client::Qwen => "qwen",
             Client::Augment => "augment",
+            Client::Kiro => "kiro",
         }
     }
 }
@@ -125,8 +128,8 @@ impl Hook {
         })
     }
 
-    /// Handles one hook event. Returns the JSON to print, if any.
-    pub fn handle(&self, input: &[u8]) -> Result<Option<Value>> {
+    /// Handles one hook event. Returns the reply, if any.
+    pub fn handle(&self, input: &[u8]) -> Result<Option<Reply>> {
         let mut event: Value = serde_json::from_slice(input).context("hook input is not JSON")?;
         // The client whose output format the reply uses.
         let mut format = self.client;
@@ -140,13 +143,34 @@ impl Hook {
             // These send Claude Code events and, like Codex, cannot swap in output.
             Client::Factory | Client::Qwen => format = Client::Codex,
             Client::Augment => event = from_augment(event),
+            // Kiro takes plain text: denials are built as Claude Code's and
+            // results as Augment's (context only), then unwrapped below.
+            Client::Kiro => {
+                event = from_kiro(event);
+                format = Client::ClaudeCode;
+            }
             Client::ClaudeCode | Client::Codex => {}
         }
-        match event["hook_event_name"].as_str() {
-            Some("PostToolUse") => self.post_tool_use(&event, format),
-            Some("PreToolUse") => Ok(self.pre_tool_use(&event, format)),
-            _ => Ok(None),
+        let reply = match event["hook_event_name"].as_str() {
+            Some("PostToolUse") if self.client == Client::Kiro => {
+                self.post_tool_use(&event, Client::Augment)?
+            }
+            Some("PostToolUse") => self.post_tool_use(&event, format)?,
+            Some("PreToolUse") => self.pre_tool_use(&event, format),
+            _ => None,
+        };
+        if self.client != Client::Kiro {
+            return Ok(reply.map(Reply::Json));
         }
+        Ok(reply.and_then(|reply| {
+            let output = &reply["hookSpecificOutput"];
+            if let Some(reason) = output["permissionDecisionReason"].as_str() {
+                return Some(Reply::Block(reason.to_string()));
+            }
+            output["additionalContext"]
+                .as_str()
+                .map(|context| Reply::Context(context.to_string()))
+        }))
     }
 
     /// Stops the agent from reviewing quarantine or changing trust on its own.
@@ -347,6 +371,16 @@ impl Hook {
     }
 }
 
+/// What the hook answers the client with.
+pub enum Reply {
+    /// JSON on stdout.
+    Json(Value),
+    /// Plain text on stdout, added to the agent's context.
+    Context(String),
+    /// The call is refused: the reason goes to stderr and the exit code is 2.
+    Block(String),
+}
+
 /// Where checked content came from.
 enum Origin {
     /// Written by outsiders: web, trackers, public MCP servers.
@@ -538,6 +572,18 @@ fn from_augment(mut event: Value) -> Value {
     event
 }
 
+/// Rewrites a Kiro hook event into the shape the rest of the hook expects.
+fn from_kiro(mut event: Value) -> Value {
+    // Kiro CLI 2.x named its events in camelCase.
+    let name = match event["hook_event_name"].as_str() {
+        Some("postToolUse") => "PostToolUse",
+        Some("preToolUse") => "PreToolUse",
+        _ => return event,
+    };
+    event["hook_event_name"] = json!(name);
+    event
+}
+
 /// The MCP server behind a tool call.
 enum McpServer<'a> {
     Named(&'a str),
@@ -568,7 +614,7 @@ fn mcp_server(event: &Value) -> Option<McpServer<'_>> {
 const PATH_KEYS: [&str; 4] = ["file_path", "path", "notebook_path", "absolute_path"];
 
 /// Built-in tools that return web content, across clients.
-const WEB_TOOLS: [&str; 8] = [
+const WEB_TOOLS: [&str; 9] = [
     "WebFetch",
     "WebSearch",
     "web_fetch",
@@ -577,13 +623,14 @@ const WEB_TOOLS: [&str; 8] = [
     "fetch",
     "FetchUrl",
     "web-fetch",
+    "web_search",
 ];
 
 fn bash_command(event: &Value) -> Option<&str> {
     match event["tool_name"].as_str() {
         Some(
             "Bash" | "PowerShell" | "run_shell_command" | "bash" | "powershell" | "run_in_terminal"
-            | "runInTerminal" | "Execute" | "launch-process",
+            | "runInTerminal" | "Execute" | "launch-process" | "execute_bash",
         ) => event["tool_input"]["command"].as_str(),
         _ => None,
     }

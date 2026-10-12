@@ -27,6 +27,7 @@ fn client_dir(home: &Path, client: Client) -> PathBuf {
         Client::Factory => ".factory",
         Client::Qwen => ".qwen",
         Client::Augment => ".augment",
+        Client::Kiro => ".kiro",
     })
 }
 
@@ -35,8 +36,8 @@ pub fn settings_in(home: &Path, client: Client) -> PathBuf {
     let file = match client {
         Client::ClaudeCode | Client::Gemini | Client::Qwen | Client::Augment => "settings.json",
         Client::Codex | Client::Cursor | Client::Factory => "hooks.json",
-        // Copilot reads every file in its hooks directory; warden owns one.
-        Client::Copilot => "hooks/mcp-warden.json",
+        // These read every file in their hooks directory; warden owns one.
+        Client::Copilot | Client::Kiro => "hooks/mcp-warden.json",
     };
     client_dir(home, client).join(file)
 }
@@ -54,7 +55,7 @@ pub fn all_clients(home: &Path, executable: &Path, install: bool) -> Result<Valu
     }
     if reports.is_empty() {
         bail!(
-            "no supported agent client found in {} (looked for .claude, .codex, .cursor, .gemini, .copilot, .factory, .qwen and .augment)",
+            "no supported agent client found in {} (looked for .claude, .codex, .cursor, .gemini, .copilot, .factory, .qwen, .augment and .kiro)",
             home.display()
         );
     }
@@ -105,6 +106,7 @@ pub fn hook_settings(
     match client {
         Client::Cursor => edit_cursor(root, &command, install)?,
         Client::Copilot => edit_copilot(root, &command, install)?,
+        Client::Kiro => edit_kiro(root, &command, install)?,
         // Gemini CLI names its events differently and counts timeouts in milliseconds.
         Client::Gemini => edit_grouped(
             hooks_object(root)?,
@@ -260,6 +262,31 @@ fn edit_copilot(root: &mut Map<String, Value>, command: &str, install: bool) -> 
     Ok(())
 }
 
+/// Kiro: `{version: "v1", hooks: [{name, trigger, matcher, action: {type, command}, timeout}]}`.
+fn edit_kiro(root: &mut Map<String, Value>, command: &str, install: bool) -> Result<()> {
+    if install {
+        root.entry("version").or_insert(json!("v1"));
+    }
+    let hooks = root
+        .entry("hooks")
+        .or_insert_with(|| Value::Array(Vec::new()))
+        .as_array_mut()
+        .context("Kiro `hooks` must be an array")?;
+    hooks.retain(|hook| !is_warden(&hook["action"]));
+    if install {
+        for trigger in ["PreToolUse", "PostToolUse"] {
+            hooks.push(json!({
+                "name": format!("mcp-warden {trigger}"),
+                "trigger": trigger,
+                "matcher": "*",
+                "action": {"type": "command", "command": command},
+                "timeout": TIMEOUT_SECONDS,
+            }));
+        }
+    }
+    Ok(())
+}
+
 /// Quoted, with forward slashes, so it survives both cmd and POSIX shells.
 fn hook_command(executable: &Path, client: Client) -> String {
     let path = executable.to_string_lossy().replace('\\', "/");
@@ -272,6 +299,7 @@ fn hook_command(executable: &Path, client: Client) -> String {
         Client::Factory => format!("\"{path}\" hook --client factory"),
         Client::Qwen => format!("\"{path}\" hook --client qwen"),
         Client::Augment => format!("\"{path}\" hook --client augment"),
+        Client::Kiro => format!("\"{path}\" hook --client kiro"),
     }
 }
 

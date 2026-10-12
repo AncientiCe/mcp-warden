@@ -11,6 +11,7 @@ mod gemini;
 mod harness;
 mod hook;
 mod install;
+mod kiro;
 mod project_trust;
 mod proxy;
 mod qwen;
