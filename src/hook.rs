@@ -75,10 +75,11 @@ pub enum Client {
     Qwen,
     Augment,
     Kiro,
+    Cline,
 }
 
 impl Client {
-    pub const ALL: [Client; 9] = [
+    pub const ALL: [Client; 10] = [
         Client::ClaudeCode,
         Client::Codex,
         Client::Cursor,
@@ -88,6 +89,7 @@ impl Client {
         Client::Qwen,
         Client::Augment,
         Client::Kiro,
+        Client::Cline,
     ];
 
     pub fn name(self) -> &'static str {
@@ -101,6 +103,7 @@ impl Client {
             Client::Qwen => "qwen",
             Client::Augment => "augment",
             Client::Kiro => "kiro",
+            Client::Cline => "cline",
         }
     }
 }
@@ -143,34 +146,48 @@ impl Hook {
             // These send Claude Code events and, like Codex, cannot swap in output.
             Client::Factory | Client::Qwen => format = Client::Codex,
             Client::Augment => event = from_augment(event),
-            // Kiro takes plain text: denials are built as Claude Code's and
-            // results as Augment's (context only), then unwrapped below.
+            // Kiro and Cline take their own replies: denials are built as
+            // Claude Code's and results as Augment's (context only), then
+            // rewritten below.
             Client::Kiro => {
                 event = from_kiro(event);
+                format = Client::ClaudeCode;
+            }
+            Client::Cline => {
+                event = from_cline(event);
                 format = Client::ClaudeCode;
             }
             Client::ClaudeCode | Client::Codex => {}
         }
         let reply = match event["hook_event_name"].as_str() {
-            Some("PostToolUse") if self.client == Client::Kiro => {
+            Some("PostToolUse") if matches!(self.client, Client::Kiro | Client::Cline) => {
                 self.post_tool_use(&event, Client::Augment)?
             }
             Some("PostToolUse") => self.post_tool_use(&event, format)?,
             Some("PreToolUse") => self.pre_tool_use(&event, format),
             _ => None,
         };
-        if self.client != Client::Kiro {
-            return Ok(reply.map(Reply::Json));
-        }
-        Ok(reply.and_then(|reply| {
-            let output = &reply["hookSpecificOutput"];
-            if let Some(reason) = output["permissionDecisionReason"].as_str() {
-                return Some(Reply::Block(reason.to_string()));
-            }
-            output["additionalContext"]
-                .as_str()
-                .map(|context| Reply::Context(context.to_string()))
-        }))
+        let output = reply.as_ref().map(|reply| &reply["hookSpecificOutput"]);
+        let deny = output.and_then(|o| o["permissionDecisionReason"].as_str());
+        let context = output.and_then(|o| o["additionalContext"].as_str());
+        Ok(match self.client {
+            Client::Kiro => match (deny, context) {
+                (Some(reason), _) => Some(Reply::Block(reason.to_string())),
+                (None, Some(context)) => Some(Reply::Context(context.to_string())),
+                (None, None) => None,
+            },
+            // Cline parses stdout, so it always gets an answer.
+            Client::Cline => Some(Reply::Json(match (deny, context) {
+                (Some(reason), _) => json!({
+                    "cancel": true,
+                    "errorMessage": reason,
+                    "contextModification": reason,
+                }),
+                (None, Some(context)) => json!({"cancel": false, "contextModification": context}),
+                (None, None) => json!({"cancel": false}),
+            })),
+            _ => reply.map(Reply::Json),
+        })
     }
 
     /// Stops the agent from reviewing quarantine or changing trust on its own.
@@ -572,6 +589,30 @@ fn from_augment(mut event: Value) -> Value {
     event
 }
 
+/// Rewrites a Cline hook event into the shape the rest of the hook expects.
+fn from_cline(event: Value) -> Value {
+    let (name, call) = match event["hookName"].as_str() {
+        Some("PostToolUse") => ("PostToolUse", &event["postToolUse"]),
+        Some("PreToolUse") => ("PreToolUse", &event["preToolUse"]),
+        _ => return event,
+    };
+    let mut normalized = json!({
+        "hook_event_name": name,
+        "cwd": event["workspaceRoots"][0],
+        "tool_name": call["tool"],
+        "tool_input": call["parameters"],
+        "tool_response": call["result"],
+    });
+    // Cline calls every MCP tool through one tool that names the server.
+    if matches!(
+        call["tool"].as_str(),
+        Some("use_mcp_tool" | "access_mcp_resource")
+    ) {
+        normalized["mcp_context"] = json!({"server_name": call["parameters"]["server_name"]});
+    }
+    normalized
+}
+
 /// Rewrites a Kiro hook event into the shape the rest of the hook expects.
 fn from_kiro(mut event: Value) -> Value {
     // Kiro CLI 2.x named its events in camelCase.
@@ -630,7 +671,7 @@ fn bash_command(event: &Value) -> Option<&str> {
     match event["tool_name"].as_str() {
         Some(
             "Bash" | "PowerShell" | "run_shell_command" | "bash" | "powershell" | "run_in_terminal"
-            | "runInTerminal" | "Execute" | "launch-process" | "execute_bash",
+            | "runInTerminal" | "Execute" | "launch-process" | "execute_bash" | "execute_command",
         ) => event["tool_input"]["command"].as_str(),
         _ => None,
     }

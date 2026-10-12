@@ -30,6 +30,10 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
   in plain text, so a flagged result stays and the agent is told to treat it as data; refused
   calls exit with code 2 and the reason on stderr. `execute_bash`, `web_fetch` and `web_search`
   are recognised, and CLI 2.x camelCase event names are accepted.
+- Cline support: `mcp-warden install cline` writes a `PreToolUse` and `PostToolUse` script
+  (`.ps1` on Windows) to `~/Documents/Cline/Hooks/` and refuses to overwrite a hook of your
+  own. Flagged results add a notice through `contextModification`; refused calls cancel.
+  `use_mcp_tool` calls are judged by the server they name.
 - Windsurf: documented the proxy route (`mcp-warden wrap ~/.codeium/windsurf/mcp_config.json`),
   since Windsurf hooks cannot act on tool results. A behavior test covers its config format.
 

@@ -2,6 +2,7 @@
 //! outside (see AGENTS.md §1).
 
 mod augment;
+mod cline;
 mod codex;
 mod copilot;
 mod corpus;

@@ -28,6 +28,7 @@ fn client_dir(home: &Path, client: Client) -> PathBuf {
         Client::Qwen => ".qwen",
         Client::Augment => ".augment",
         Client::Kiro => ".kiro",
+        Client::Cline => "Documents/Cline",
     })
 }
 
@@ -38,6 +39,8 @@ pub fn settings_in(home: &Path, client: Client) -> PathBuf {
         Client::Codex | Client::Cursor | Client::Factory => "hooks.json",
         // These read every file in their hooks directory; warden owns one.
         Client::Copilot | Client::Kiro => "hooks/mcp-warden.json",
+        // Cline runs one executable file per event from this directory.
+        Client::Cline => "Hooks",
     };
     client_dir(home, client).join(file)
 }
@@ -55,7 +58,7 @@ pub fn all_clients(home: &Path, executable: &Path, install: bool) -> Result<Valu
     }
     if reports.is_empty() {
         bail!(
-            "no supported agent client found in {} (looked for .claude, .codex, .cursor, .gemini, .copilot, .factory, .qwen, .augment and .kiro)",
+            "no supported agent client found in {} (looked for .claude, .codex, .cursor, .gemini, .copilot, .factory, .qwen, .augment, .kiro and Documents/Cline)",
             home.display()
         );
     }
@@ -71,6 +74,9 @@ pub fn hook_settings(
     install: bool,
 ) -> Result<Value> {
     let command = hook_command(executable, client);
+    if client == Client::Cline {
+        return cline_scripts(settings, &command, install);
+    }
     if !install && !settings.exists() {
         return Ok(
             json!({"removed": false, "settings": settings, "command": command, "backup": null}),
@@ -107,6 +113,7 @@ pub fn hook_settings(
         Client::Cursor => edit_cursor(root, &command, install)?,
         Client::Copilot => edit_copilot(root, &command, install)?,
         Client::Kiro => edit_kiro(root, &command, install)?,
+        Client::Cline => bail!("Cline hooks are scripts in a directory, not a settings file"),
         // Gemini CLI names its events differently and counts timeouts in milliseconds.
         Client::Gemini => edit_grouped(
             hooks_object(root)?,
@@ -287,6 +294,73 @@ fn edit_kiro(root: &mut Map<String, Value>, command: &str, install: bool) -> Res
     Ok(())
 }
 
+/// Marks a Cline hook script as warden's own.
+const CLINE_MARKER: &str = "Installed by mcp-warden";
+
+/// Cline: an executable script per event in `dir` that hands stdin to warden.
+/// A hook file of the user's own is never touched.
+fn cline_scripts(dir: &Path, command: &str, install: bool) -> Result<Value> {
+    let scripts = ["PreToolUse", "PostToolUse"].map(|event| {
+        let name = if cfg!(windows) {
+            format!("{event}.ps1")
+        } else {
+            event.to_string()
+        };
+        dir.join(name)
+    });
+    let ours = |path: &Path| -> Result<Option<bool>> {
+        match std::fs::read_to_string(path) {
+            Ok(text) => Ok(Some(text.contains(CLINE_MARKER))),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(err) => Err(err).with_context(|| format!("reading {}", path.display())),
+        }
+    };
+    let mut changed = false;
+    if install {
+        for path in &scripts {
+            if ours(path)? == Some(false) {
+                bail!(
+                    "{} is a Cline hook of your own; merge `{command}` into it by hand",
+                    path.display()
+                );
+            }
+        }
+        let body = if cfg!(windows) {
+            format!(
+                "# {CLINE_MARKER}; `mcp-warden uninstall cline` removes it.\n\
+                 $data = [Console]::In.ReadToEnd()\n$data | & {command}\nexit $LASTEXITCODE\n"
+            )
+        } else {
+            format!(
+                "#!/bin/sh\n# {CLINE_MARKER}; `mcp-warden uninstall cline` removes it.\nexec {command}\n"
+            )
+        };
+        std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+        for path in &scripts {
+            if std::fs::read_to_string(path).ok().as_deref() == Some(body.as_str()) {
+                continue;
+            }
+            std::fs::write(path, &body).with_context(|| format!("writing {}", path.display()))?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))?;
+            }
+            changed = true;
+        }
+    } else {
+        for path in &scripts {
+            if ours(path)? == Some(true) {
+                std::fs::remove_file(path)
+                    .with_context(|| format!("removing {}", path.display()))?;
+                changed = true;
+            }
+        }
+    }
+    let key = if install { "installed" } else { "removed" };
+    Ok(json!({ key: changed, "settings": dir, "command": command, "backup": null }))
+}
+
 /// Quoted, with forward slashes, so it survives both cmd and POSIX shells.
 fn hook_command(executable: &Path, client: Client) -> String {
     let path = executable.to_string_lossy().replace('\\', "/");
@@ -300,6 +374,7 @@ fn hook_command(executable: &Path, client: Client) -> String {
         Client::Qwen => format!("\"{path}\" hook --client qwen"),
         Client::Augment => format!("\"{path}\" hook --client augment"),
         Client::Kiro => format!("\"{path}\" hook --client kiro"),
+        Client::Cline => format!("\"{path}\" hook --client cline"),
     }
 }
 

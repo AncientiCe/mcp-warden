@@ -107,7 +107,7 @@ struct ClientArgs {
     /// Agent client to configure [default: every supported client found].
     #[arg(value_enum)]
     client: Option<Client>,
-    /// Hook settings file [default: ~/.claude/settings.json, ~/.codex/hooks.json, ~/.cursor/hooks.json, ~/.gemini/settings.json, ~/.copilot/hooks/mcp-warden.json, ~/.factory/hooks.json, ~/.qwen/settings.json, ~/.augment/settings.json or ~/.kiro/hooks/mcp-warden.json].
+    /// Hook settings file [default: ~/.claude/settings.json, ~/.codex/hooks.json, ~/.cursor/hooks.json, ~/.gemini/settings.json, ~/.copilot/hooks/mcp-warden.json, ~/.factory/hooks.json, ~/.qwen/settings.json, ~/.augment/settings.json, ~/.kiro/hooks/mcp-warden.json or the ~/Documents/Cline/Hooks directory].
     #[arg(long, requires = "client")]
     settings: Option<PathBuf>,
     /// Home directory to look for clients in [default: your home directory].
