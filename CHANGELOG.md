@@ -4,6 +4,12 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Fixed
+
+- A proxy that stops on a client-side failure (for example unreadable taint state) could exit
+  with the server's clean exit code when the server shut down first. The failure is now kept
+  and reported regardless of timing.
+
 ## [0.4.0] - 2026-10-12
 
 ### Added
