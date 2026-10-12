@@ -4,6 +4,8 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-12
+
 ### Fixed
 
 - A proxy that stops on a client-side failure (for example unreadable taint state) could exit
