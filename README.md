@@ -156,7 +156,7 @@ This registers `mcp-warden hook` once for every tool in each supported client it
 | Codex | `~/.codex/hooks.json` | Codex cannot swap in cleaned output, so a flagged result is replaced by the quarantine notice as a whole. Codex asks once, via `/hooks`, to trust the hook. |
 | Cursor | `~/.cursor/hooks.json` | Cursor can replace MCP output only; for Shell and Read results the agent is told to treat the flagged output as data and tell you. |
 | Gemini CLI | `~/.gemini/settings.json` | Like Codex, a flagged result is replaced by the quarantine notice as a whole. MCP tools are checked per server via `mcp_context`. |
-| Copilot CLI | `~/.copilot/hooks/mcp-warden.json` | Cleaned text replaces the result the model sees. MCP tools are judged by their server name (the part before the last `-`). |
+| Copilot CLI | `~/.copilot/hooks/mcp-warden.json` | Cleaned text replaces the result the model sees. MCP tools are judged by their server name (the part before the last `-`). VS Code's Copilot agent runs the same file but cannot swap in output, so there a flagged result is replaced by the notice, as with Codex. |
 
 An exact backup of any existing file is written first. Nothing has to be configured per MCP
 server. Restart the clients to load the hook.

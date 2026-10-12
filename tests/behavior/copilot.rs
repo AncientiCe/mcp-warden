@@ -188,3 +188,81 @@ fn install_writes_a_hook_file_for_every_tool() {
     let value: Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
     assert!(value["hooks"].get("postToolUse").is_none());
 }
+
+/// VS Code's Copilot agent runs the same hook files but sends Claude Code
+/// style events, and cannot swap in cleaned output.
+fn vscode_post(tool: &str, input: Value, text: &str) -> Value {
+    json!({
+        "timestamp": "2026-10-12T10:00:00.000Z",
+        "cwd": "/work",
+        "session_id": "s-1",
+        "hook_event_name": "PostToolUse",
+        "transcript_path": "/tmp/t.json",
+        "tool_name": tool,
+        "tool_input": input,
+        "tool_use_id": "u-1",
+        "tool_response": text,
+    })
+}
+
+#[test]
+fn vscode_results_with_withheld_content_are_blocked_with_a_notice() {
+    let home = TempDir::new().unwrap();
+    for event in [
+        vscode_post(
+            "run_in_terminal",
+            json!({"command": "gh issue view 7"}),
+            INJECTION,
+        ),
+        vscode_post(
+            "fetch_webpage",
+            json!({"urls": ["https://example.com"]}),
+            INJECTION,
+        ),
+        vscode_post(
+            "mcp_github_get_issue",
+            json!({"issue_number": 7}),
+            INJECTION,
+        ),
+    ] {
+        let output = hook(&home, &event);
+        let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(value["decision"], "block", "{event}");
+        let reason = value["reason"].as_str().unwrap();
+        assert!(reason.contains("mcp-warden show"), "{reason}");
+        assert!(!reason.contains("Ignore all previous"), "{reason}");
+    }
+}
+
+#[test]
+fn vscode_own_mcp_servers_and_project_commands_stay_silent() {
+    let home = TempDir::new().unwrap();
+    for event in [
+        vscode_post("mcp_palace_palace_search", json!({"query": "x"}), INJECTION),
+        vscode_post(
+            "run_in_terminal",
+            json!({"command": "cargo test"}),
+            INJECTION,
+        ),
+    ] {
+        assert!(hook(&home, &event).stdout.is_empty(), "{event}");
+    }
+}
+
+#[test]
+fn vscode_agent_cannot_release_quarantine() {
+    let home = TempDir::new().unwrap();
+    let output = hook(
+        &home,
+        &json!({
+            "cwd": "/work",
+            "session_id": "s-1",
+            "hook_event_name": "PreToolUse",
+            "tool_name": "run_in_terminal",
+            "tool_input": {"command": "mcp-warden release 0123456789ab"},
+            "tool_use_id": "u-1",
+        }),
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["hookSpecificOutput"]["permissionDecision"], "deny");
+}

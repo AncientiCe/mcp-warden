@@ -119,22 +119,27 @@ impl Hook {
     /// Handles one hook event. Returns the JSON to print, if any.
     pub fn handle(&self, input: &[u8]) -> Result<Option<Value>> {
         let mut event: Value = serde_json::from_slice(input).context("hook input is not JSON")?;
+        // The client whose output format the reply uses.
+        let mut format = self.client;
         match self.client {
             Client::Cursor => event = from_cursor(event),
             Client::Gemini => event = from_gemini(event),
+            // VS Code's Copilot agent runs Copilot hook files with Claude Code
+            // style events and, like Codex, cannot swap in cleaned output.
+            Client::Copilot if event.get("hook_event_name").is_some() => format = Client::Codex,
             Client::Copilot => event = from_copilot(event),
             Client::ClaudeCode | Client::Codex => {}
         }
         match event["hook_event_name"].as_str() {
-            Some("PostToolUse") => self.post_tool_use(&event),
-            Some("PreToolUse") => Ok(self.pre_tool_use(&event)),
+            Some("PostToolUse") => self.post_tool_use(&event, format),
+            Some("PreToolUse") => Ok(self.pre_tool_use(&event, format)),
             _ => Ok(None),
         }
     }
 
     /// Stops the agent from reviewing quarantine or changing trust on its own.
     /// Text that merely mentions the commands (notes, docs, commit messages) is fine.
-    fn pre_tool_use(&self, event: &Value) -> Option<Value> {
+    fn pre_tool_use(&self, event: &Value, format: Client) -> Option<Value> {
         let input = &event["tool_input"];
         let command = bash_command(event).is_some_and(|c| {
             self.user_only_command.is_match(c) || self.quarantine_path.is_match(c)
@@ -147,17 +152,17 @@ impl Hook {
             return None;
         }
         let reason = "mcp-warden: quarantine and project trust are for the user to manage in their own terminal (`mcp-warden show|release ID`, `mcp-warden trust|distrust DIR`). Ask the user instead.";
-        if self.client == Client::Cursor {
+        if format == Client::Cursor {
             return Some(json!({
                 "permission": "deny",
                 "user_message": reason,
                 "agent_message": reason,
             }));
         }
-        if self.client == Client::Gemini {
+        if format == Client::Gemini {
             return Some(json!({"decision": "deny", "reason": reason}));
         }
-        if self.client == Client::Copilot {
+        if format == Client::Copilot {
             return Some(json!({
                 "permissionDecision": "deny",
                 "permissionDecisionReason": reason,
@@ -172,7 +177,7 @@ impl Hook {
         }))
     }
 
-    fn post_tool_use(&self, event: &Value) -> Result<Option<Value>> {
+    fn post_tool_use(&self, event: &Value, format: Client) -> Result<Option<Value>> {
         let tool = event["tool_name"].as_str().unwrap_or("");
         let cwd = Path::new(event["cwd"].as_str().unwrap_or("."));
         if let Some((_, dir)) = bash_command(event).and_then(clone_target) {
@@ -204,7 +209,7 @@ impl Hook {
                 .save(&id, tool, &event["tool_input"], &findings, withheld)?;
         }
         // Cursor can replace MCP output only; other results stay as they are.
-        let replaceable = self.client != Client::Cursor || tool.starts_with("MCP:");
+        let replaceable = format != Client::Cursor || tool.starts_with("MCP:");
         let message = context(
             tool,
             &findings,
@@ -212,7 +217,7 @@ impl Hook {
             &origin,
             replaceable,
         );
-        if self.client == Client::Cursor {
+        if format == Client::Cursor {
             if message.is_none() && !(changed && replaceable) {
                 return Ok(None);
             }
@@ -225,10 +230,10 @@ impl Hook {
             }
             return Ok(Some(output));
         }
-        if matches!(self.client, Client::Codex | Client::Gemini) {
+        if matches!(format, Client::Codex | Client::Gemini) {
             // Neither can swap in cleaned output: anything worth a message
             // replaces the result; ordinary markup passes as it is.
-            let decision = if self.client == Client::Gemini {
+            let decision = if format == Client::Gemini {
                 "deny"
             } else {
                 "block"
@@ -238,7 +243,7 @@ impl Hook {
         if message.is_none() && !changed {
             return Ok(None);
         }
-        if self.client == Client::Copilot {
+        if format == Client::Copilot {
             let mut output = json!({});
             if let Some(message) = message {
                 output["additionalContext"] = json!(message);
@@ -287,6 +292,10 @@ impl Hook {
                     PUBLIC_SERVERS.iter().any(|s| name.contains(s))
                 }
             },
+            Some(McpServer::Prefixed(name)) => {
+                let name = name.to_ascii_lowercase();
+                PUBLIC_SERVERS.iter().any(|s| name.starts_with(s))
+            }
             Some(McpServer::Unnamed) => true,
             None if WEB_TOOLS.contains(&tool) => true,
             None => bash_command(event).is_some_and(|c| self.external_command.is_match(c)),
@@ -486,6 +495,9 @@ fn from_copilot(event: Value) -> Value {
 /// The MCP server behind a tool call.
 enum McpServer<'a> {
     Named(&'a str),
+    /// `mcp_server_tool` (Gemini without its context, VS Code): server names
+    /// may hold underscores, so only the start of the name is known.
+    Prefixed(&'a str),
     /// The client does not say which server, so the tool counts as outside.
     Unnamed,
 }
@@ -499,22 +511,32 @@ fn mcp_server(event: &Value) -> Option<McpServer<'_>> {
     if let Some(server) = event["mcp_context"]["server_name"].as_str() {
         return Some(McpServer::Named(server));
     }
-    // Cursor's `MCP:tool`, or Gemini's `mcp_server_tool` without its context
-    // (server names may hold underscores, so the name cannot be split).
-    (tool.starts_with("MCP:") || tool.starts_with("mcp_")).then_some(McpServer::Unnamed)
+    if let Some(rest) = tool.strip_prefix("mcp_") {
+        return Some(McpServer::Prefixed(rest));
+    }
+    // Cursor's `MCP:tool`.
+    tool.starts_with("MCP:").then_some(McpServer::Unnamed)
 }
 
 /// Tool input fields that name a file, across clients.
 const PATH_KEYS: [&str; 4] = ["file_path", "path", "notebook_path", "absolute_path"];
 
 /// Built-in tools that return web content, across clients.
-const WEB_TOOLS: [&str; 4] = ["WebFetch", "WebSearch", "web_fetch", "google_web_search"];
+const WEB_TOOLS: [&str; 6] = [
+    "WebFetch",
+    "WebSearch",
+    "web_fetch",
+    "google_web_search",
+    "fetch_webpage",
+    "fetch",
+];
 
 fn bash_command(event: &Value) -> Option<&str> {
     match event["tool_name"].as_str() {
-        Some("Bash" | "PowerShell" | "run_shell_command" | "bash" | "powershell") => {
-            event["tool_input"]["command"].as_str()
-        }
+        Some(
+            "Bash" | "PowerShell" | "run_shell_command" | "bash" | "powershell" | "run_in_terminal"
+            | "runInTerminal",
+        ) => event["tool_input"]["command"].as_str(),
         _ => None,
     }
 }

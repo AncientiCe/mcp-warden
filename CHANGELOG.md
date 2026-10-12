@@ -13,6 +13,11 @@ All notable changes to `mcp-warden` are documented here. Format follows [Keep a 
 - GitHub Copilot CLI support: `mcp-warden install copilot` writes
   `~/.copilot/hooks/mcp-warden.json` for every tool. Cleaned text replaces the result the model
   sees (`modifiedResult`), and `toolArgs` are read whether sent as an object or a JSON string.
+- VS Code's Copilot agent, which runs the same `~/.copilot/hooks` file with Claude Code style
+  events: flagged results are blocked with the quarantine notice. `run_in_terminal` and
+  `fetch_webpage` count as shell and web tools. For `mcp_<server>_<tool>` names without a known
+  server, a public server name at the start makes the tool outside content; other servers stay
+  quiet.
 
 ## [0.3.6] - 2026-10-11
 
